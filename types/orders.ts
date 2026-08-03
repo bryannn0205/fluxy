@@ -44,13 +44,64 @@ export type OrderExportRow = Prisma.OrderGetPayload<{
   };
 }>;
 
+// Campos monetários do pedido, agrupados porque entram e saem juntos: quem
+// não pode ver o total também não pode ver subtotal, desconto, preço unitário
+// nem forma de pagamento — senão o valor é reconstruível somando os itens.
+export const ORDER_FINANCIAL_FIELDS = [
+  "subtotal",
+  "discount",
+  "total",
+  "paymentMethod",
+] as const;
+
+/** Pedido sem nenhum valor monetário, para papéis sem `orders:viewFinancials`. */
+export type RedactedOrderDetail = Omit<
+  OrderWithRelations,
+  (typeof ORDER_FINANCIAL_FIELDS)[number] | "items"
+> & {
+  items: Omit<OrderWithRelations["items"][number], "unitPrice" | "total">[];
+};
+
+/**
+ * Remove os valores monetários do pedido — de verdade, não da tipagem.
+ *
+ * As chaves são descartadas por desestruturação, então não sobram no objeto
+ * serializado nem no HTML renderizado pelo servidor. Esconder por CSS deixaria
+ * o número no payload, ao alcance de quem abrir o inspetor.
+ */
+export function redactOrderFinancials(order: OrderWithRelations): RedactedOrderDetail {
+  const {
+    subtotal: _subtotal,
+    discount: _discount,
+    total: _total,
+    paymentMethod: _paymentMethod,
+    items,
+    ...resto
+  } = order;
+
+  return {
+    ...resto,
+    items: items.map(({ unitPrice: _unitPrice, total: _itemTotal, ...item }) => item),
+  };
+}
+
 // Prisma's Decimal não pode cruzar a fronteira Server -> Client Component
 // (React rejeita instâncias de classe em props serializadas). Client
 // Components sempre recebem este tipo, nunca o OrderListItem bruto.
-export type ClientOrderListItem = Omit<OrderListItem, "total"> & { total: number };
+//
+// `total` é `number | null`: null significa "este papel não pode ver valores",
+// não "pedido sem total". Pedido sempre tem total; a ausência aqui é decisão
+// de permissão.
+export type ClientOrderListItem = Omit<OrderListItem, "total"> & {
+  total: number | null;
+};
 
-export function toClientOrderListItem(order: OrderListItem): ClientOrderListItem {
-  return { ...order, total: Number(order.total) };
+export function toClientOrderListItem(
+  order: OrderListItem,
+  canViewFinancials: boolean,
+): ClientOrderListItem {
+  const { total, ...resto } = order;
+  return { ...resto, total: canViewFinancials ? Number(total) : null };
 }
 
 // Formato enxuto para o board de Produção — só os campos que um card do
@@ -69,8 +120,12 @@ export type KanbanOrder = Prisma.OrderGetPayload<{
   };
 }>;
 
-export type ClientKanbanOrder = Omit<KanbanOrder, "total"> & { total: number };
+export type ClientKanbanOrder = Omit<KanbanOrder, "total"> & { total: number | null };
 
-export function toClientKanbanOrder(order: KanbanOrder): ClientKanbanOrder {
-  return { ...order, total: Number(order.total) };
+export function toClientKanbanOrder(
+  order: KanbanOrder,
+  canViewFinancials: boolean,
+): ClientKanbanOrder {
+  const { total, ...resto } = order;
+  return { ...resto, total: canViewFinancials ? Number(total) : null };
 }

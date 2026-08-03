@@ -12,25 +12,11 @@ import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { OrderRepository } from "@/repositories/interfaces/OrderRepository";
 import type { CustomerRepository } from "@/repositories/interfaces/CustomerRepository";
 import type { ProductRepository } from "@/repositories/interfaces/ProductRepository";
-import type { Customer, Product, Company } from "@/lib/generated/prisma/client";
+import type { Customer, Product } from "@/lib/generated/prisma/client";
+import { buildCompany } from "../../helpers/company";
 import type { OrderWithRelations } from "@/types/orders";
 
-const activeCompany: Company = {
-  id: "company-1",
-  name: "Empresa Teste",
-  email: "empresa@teste.com",
-  cnpj: null,
-  phone: null,
-  planId: null,
-  subscriptionStatus: "ACTIVE",
-  trialEndsAt: new Date(),
-  asaasCustomerId: null,
-  asaasSubscriptionId: null,
-  nextOrderNumber: 1,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
+const activeCompany = buildCompany();
 
 function buildCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
@@ -156,10 +142,7 @@ describe("OrderService", () => {
     };
 
     it("rejeita quando a assinatura da empresa expirou", async () => {
-      const expiredCompany: Company = {
-        ...activeCompany,
-        subscriptionStatus: "EXPIRED",
-      };
+      const expiredCompany = buildCompany({ subscriptionStatus: "EXPIRED" });
 
       await expect(service.create(validInput, expiredCompany, "user-1")).rejects.toThrow(
         SubscriptionRequiredError,
@@ -307,7 +290,7 @@ describe("OrderService", () => {
     }
 
     it("rejeita quando a assinatura da empresa expirou", async () => {
-      const expiredCompany: Company = { ...activeCompany, subscriptionStatus: "EXPIRED" };
+      const expiredCompany = buildCompany({ subscriptionStatus: "EXPIRED" });
 
       await expect(
         service.updateDetails(validInput, expiredCompany, "user-1"),

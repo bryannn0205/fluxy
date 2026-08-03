@@ -7,11 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import type { ClientProduct } from "@/types/products";
+import type { ClientProductWithCosts } from "@/types/products";
 import { ProductFormDialog } from "@/app/dashboard/products/_components/ProductFormDialog";
 import { deleteProductAction } from "@/app/dashboard/products/actions";
 
-export function ProductRowActions({ product }: { product: ClientProduct }) {
+// Só é renderizado para papéis com products:update — que são os mesmos com
+// products:viewCosts —, por isso recebe o produto com custo: o formulário de
+// edição precisa do campo para não zerá-lo ao salvar.
+export function ProductRowActions({ product }: { product: ClientProductWithCosts }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
 

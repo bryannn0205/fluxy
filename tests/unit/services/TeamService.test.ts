@@ -11,7 +11,8 @@ import type { AuditService } from "@/services/AuditService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { InvitationRepository } from "@/repositories/interfaces/InvitationRepository";
 import type { UserRepository } from "@/repositories/interfaces/UserRepository";
-import type { Company, Invitation, User } from "@/lib/generated/prisma/client";
+import type { Invitation, User } from "@/lib/generated/prisma/client";
+import { buildCompany } from "../../helpers/company";
 
 vi.mock("@/lib/email", () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
@@ -22,22 +23,7 @@ vi.mock("@/lib/password", () => ({
   hashPassword: vi.fn().mockResolvedValue("hashed-password"),
 }));
 
-const activeCompany: Company = {
-  id: "company-1",
-  name: "Empresa Teste",
-  email: "empresa@teste.com",
-  cnpj: null,
-  phone: null,
-  planId: null,
-  subscriptionStatus: "ACTIVE",
-  trialEndsAt: new Date(),
-  asaasCustomerId: null,
-  asaasSubscriptionId: null,
-  nextOrderNumber: 1,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
+const activeCompany = buildCompany();
 
 function buildUser(overrides: Partial<User> = {}): User {
   return {
@@ -48,7 +34,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     emailVerified: null,
     image: null,
     passwordHash: "hash",
-    role: "MEMBER",
+    role: "OPERATOR",
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
@@ -61,7 +47,7 @@ function buildInvitation(overrides: Partial<Invitation> = {}): Invitation {
     id: "invitation-1",
     companyId: "company-1",
     email: "convidado@teste.com",
-    role: "MEMBER",
+    role: "OPERATOR",
     token: "token-123",
     invitedById: "owner-1",
     expiresAt: new Date(Date.now() + 86_400_000),
@@ -113,12 +99,12 @@ describe("TeamService", () => {
   });
 
   describe("invite", () => {
-    const input = { email: "novo@teste.com", role: "MEMBER" as const };
+    const input = { email: "novo@teste.com", role: "OPERATOR" as const };
     const ownerActor = { id: "owner-1", role: "OWNER" as const };
 
-    it("rejeita quando quem convida é MEMBER", async () => {
+    it("rejeita quando quem convida é OPERATOR", async () => {
       await expect(
-        service.invite(input, activeCompany, { id: "member-1", role: "MEMBER" }),
+        service.invite(input, activeCompany, { id: "member-1", role: "OPERATOR" }),
       ).rejects.toThrow(ForbiddenError);
 
       expect(invitationRepository.upsert).not.toHaveBeenCalled();
@@ -147,7 +133,7 @@ describe("TeamService", () => {
         expect.objectContaining({
           companyId: "company-1",
           email: "novo@teste.com",
-          role: "MEMBER",
+          role: "OPERATOR",
         }),
       );
       const { sendEmail } = await import("@/lib/email");
@@ -244,11 +230,11 @@ describe("TeamService", () => {
       expect(userRepository.updateRole).not.toHaveBeenCalled();
     });
 
-    it("rejeita quando quem altera é MEMBER", async () => {
+    it("rejeita quando quem altera é OPERATOR", async () => {
       await expect(
         service.updateMemberRole({ userId: "user-2", role: "ADMIN" }, activeCompany, {
           id: "member-1",
-          role: "MEMBER",
+          role: "OPERATOR",
         }),
       ).rejects.toThrow(ForbiddenError);
     });
@@ -267,7 +253,7 @@ describe("TeamService", () => {
 
     it("rejeita ADMIN promovendo alguém a OWNER", async () => {
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
-        buildUser({ role: "MEMBER" }),
+        buildUser({ role: "OPERATOR" }),
       );
 
       await expect(
@@ -334,9 +320,9 @@ describe("TeamService", () => {
       );
     });
 
-    it("permite OWNER promover MEMBER a OWNER", async () => {
+    it("permite OWNER promover OPERATOR a OWNER", async () => {
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
-        buildUser({ id: "user-2", role: "MEMBER" }),
+        buildUser({ id: "user-2", role: "OPERATOR" }),
       );
 
       await service.updateMemberRole(
@@ -352,9 +338,9 @@ describe("TeamService", () => {
       );
     });
 
-    it("permite ADMIN alterar papel de outro MEMBER/ADMIN", async () => {
+    it("permite ADMIN alterar papel de outro OPERATOR/ADMIN", async () => {
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
-        buildUser({ id: "user-2", role: "MEMBER" }),
+        buildUser({ id: "user-2", role: "OPERATOR" }),
       );
 
       await service.updateMemberRole(
@@ -406,9 +392,9 @@ describe("TeamService", () => {
       expect(userRepository.softDelete).not.toHaveBeenCalled();
     });
 
-    it("remove um MEMBER normalmente e registra auditoria", async () => {
+    it("remove um OPERATOR normalmente e registra auditoria", async () => {
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
-        buildUser({ id: "user-2", role: "MEMBER" }),
+        buildUser({ id: "user-2", role: "OPERATOR" }),
       );
 
       await service.removeMember("user-2", activeCompany, ownerActor);

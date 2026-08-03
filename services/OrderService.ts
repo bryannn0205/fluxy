@@ -1,4 +1,5 @@
-import type { Company, OrderStatus } from "@/lib/generated/prisma/client";
+import type { Company, OrderStatus, Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import {
   ORDER_PRIORITY_LABELS,
   ORDER_STATUS_LABELS,
@@ -30,7 +31,13 @@ import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { NotificationService } from "@/services/NotificationService";
 
-type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt">;
+// A empresa vem sempre do CompanySession resolvido por requireCompany(), que
+// já carrega o papel lido do banco. Exigir `role` aqui é o que permite o guard
+// de permissão viver dentro do service — o portão fica onde a regra está, não
+// espalhado pelas Server Actions, onde uma chamada nova esqueceria dele.
+type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt"> & {
+  role: Role;
+};
 
 const ORDER_CSV_HEADERS = [
   "Número",
@@ -72,6 +79,7 @@ export class OrderService {
     userId: string,
   ): Promise<OrderWithRelations> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "orders", "create");
 
     const customer = await this.customerRepository.findById(input.customerId, company.id);
     if (!customer) {
@@ -157,6 +165,7 @@ export class OrderService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "orders", "updateStatus");
 
     const order = await this.repository.findById(orderId, company.id);
     if (!order) {
@@ -203,6 +212,7 @@ export class OrderService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "orders", "update");
 
     const order = await this.repository.findById(input.orderId, company.id);
     if (!order) {
@@ -244,6 +254,7 @@ export class OrderService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "orders", "delete");
 
     const order = await this.repository.findById(id, company.id);
     if (!order) {

@@ -40,8 +40,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const { period: rawPeriod } = await searchParams;
   const period = parsePeriod(rawPeriod);
 
-  const { companyId } = await requireCompany();
-  const report = await reportService.getSalesReport(companyId, period);
+  const { companyId, role } = await requireCompany();
+
+  // O guard vive no service e lança ForbiddenError; a página não repete a
+  // regra, só passa o papel. Quem não pode ver nem chega aqui — o item some
+  // da navegação —, mas quem digitar a URL bate no mesmo portão.
+  const report = await reportService.getSalesReport(companyId, period, role);
 
   const periodLabel = REPORT_PERIOD_LABELS[period].toLowerCase();
   const hasSales = report.summary.orderCount > 0;

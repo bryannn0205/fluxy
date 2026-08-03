@@ -53,9 +53,11 @@ export function KanbanCard({ order }: { order: ClientKanbanOrder }) {
             ? formatCalendarDate(order.expectedDeliveryDate)
             : "Sem previsão"}
         </span>
-        <span className="font-mono font-medium tabular-nums">
-          {formatCurrency(order.total)}
-        </span>
+        {order.total !== null && (
+          <span className="font-mono font-medium tabular-nums">
+            {formatCurrency(order.total)}
+          </span>
+        )}
       </div>
     </div>
   );

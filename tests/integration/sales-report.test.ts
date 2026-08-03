@@ -2,12 +2,12 @@ import { randomUUID } from "crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { Company } from "@/lib/generated/prisma/client";
 import { startOfDaysAgoBrazil, toBrazilDateKey } from "@/lib/dates";
 import { PrismaReportRepository } from "@/repositories/implementations/PrismaReportRepository";
 import { ReportService } from "@/services/ReportService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -25,8 +25,8 @@ function middayBrazil(daysAgo: number): Date {
 // Postgres. Um mock do query builder não pegaria erro de sintaxe nem provaria
 // que o bucket caiu no dia certo.
 describe.skipIf(!prisma)("Relatório de vendas", () => {
-  let company: Company;
-  let otherCompany: Company;
+  let company: ActingCompany;
+  let otherCompany: ActingCompany;
   let customerId: string;
   let productId: string;
   let userId: string;
@@ -45,8 +45,8 @@ describe.skipIf(!prisma)("Relatório de vendas", () => {
         },
       });
 
-    company = await makeCompany("A");
-    otherCompany = await makeCompany("B");
+    company = withRole(await makeCompany("A"));
+    otherCompany = withRole(await makeCompany("B"));
 
     const user = await prisma.user.create({
       data: {
@@ -144,7 +144,7 @@ describe.skipIf(!prisma)("Relatório de vendas", () => {
       orderNumber: "0002",
     });
 
-    const report = await reportService!.getSalesReport(company.id, 7);
+    const report = await reportService!.getSalesReport(company.id, 7, "OWNER");
 
     expect(report.revenueByDay).toHaveLength(7);
 
@@ -172,7 +172,7 @@ describe.skipIf(!prisma)("Relatório de vendas", () => {
       orderNumber: "0003",
     });
 
-    const report = await reportService!.getSalesReport(company.id, 7);
+    const report = await reportService!.getSalesReport(company.id, 7, "OWNER");
 
     expect(report.summary.revenue).toBe(150);
     expect(report.summary.orderCount).toBe(2);
@@ -202,7 +202,7 @@ describe.skipIf(!prisma)("Relatório de vendas", () => {
       orderNumber: "0001",
     });
 
-    const report = await reportService!.getSalesReport(company.id, 7);
+    const report = await reportService!.getSalesReport(company.id, 7, "OWNER");
 
     expect(report.summary.revenue).toBe(150);
     expect(report.revenueByDay.some((point) => point.revenue === 7777)).toBe(false);

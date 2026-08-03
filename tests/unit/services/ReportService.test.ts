@@ -31,7 +31,7 @@ describe("ReportService", () => {
       const repository = buildRepository();
       const service = new ReportService(repository);
 
-      const report = await service.getSalesReport("company-1", 7);
+      const report = await service.getSalesReport("company-1", 7, "OWNER");
 
       expect(report.revenueByDay).toHaveLength(7);
       expect(report.revenueByDay[0]?.date).toBe("2026-07-28");
@@ -42,7 +42,7 @@ describe("ReportService", () => {
       const repository = buildRepository();
       const service = new ReportService(repository);
 
-      await service.getSalesReport("company-1", 30);
+      await service.getSalesReport("company-1", 30, "OWNER");
 
       // 00:00 de 05/07 em Brasília (UTC-3) é 03:00 UTC do mesmo dia.
       const expectedSince = new Date("2026-07-05T03:00:00Z");
@@ -57,7 +57,7 @@ describe("ReportService", () => {
       vi.setSystemTime(new Date("2026-08-04T01:00:00Z"));
 
       const service = new ReportService(buildRepository());
-      const report = await service.getSalesReport("company-1", 7);
+      const report = await service.getSalesReport("company-1", 7, "OWNER");
 
       expect(report.revenueByDay.at(-1)?.date).toBe("2026-08-03");
       expect(report.revenueByDay[0]?.date).toBe("2026-07-28");
@@ -74,7 +74,7 @@ describe("ReportService", () => {
         buildRepository({ getRevenueByDay: vi.fn().mockResolvedValue(rows) }),
       );
 
-      const report = await service.getSalesReport("company-1", 7);
+      const report = await service.getSalesReport("company-1", 7, "OWNER");
 
       expect(report.revenueByDay.map((point) => point.date)).toEqual([
         "2026-07-28",
@@ -98,7 +98,7 @@ describe("ReportService", () => {
         buildRepository({ getRevenueByDay: vi.fn().mockResolvedValue(rows) }),
       );
 
-      const report = await service.getSalesReport("company-1", 7);
+      const report = await service.getSalesReport("company-1", 7, "OWNER");
 
       expect(report.revenueByDay).toHaveLength(7);
       expect(report.revenueByDay.every((point) => point.revenue === 0)).toBe(true);
@@ -113,7 +113,7 @@ describe("ReportService", () => {
         }),
       );
 
-      const report = await service.getSalesReport("company-1", 30);
+      const report = await service.getSalesReport("company-1", 30, "OWNER");
 
       expect(report.summary.averageTicket).toBe(0);
       expect(Number.isNaN(report.summary.averageTicket)).toBe(false);
@@ -126,7 +126,7 @@ describe("ReportService", () => {
         }),
       );
 
-      const report = await service.getSalesReport("company-1", 30);
+      const report = await service.getSalesReport("company-1", 30, "OWNER");
 
       expect(report.summary.averageTicket).toBe(250);
     });
@@ -136,7 +136,7 @@ describe("ReportService", () => {
     const repository = buildRepository();
     const service = new ReportService(repository);
 
-    await service.getSalesReport("company-42", 90);
+    await service.getSalesReport("company-42", 90, "OWNER");
 
     for (const query of [
       repository.getSummary,

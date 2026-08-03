@@ -34,7 +34,14 @@ import {
   updateMemberRoleAction,
 } from "@/app/dashboard/settings/team/actions";
 
-const ROLE_OPTIONS: Role[] = ["OWNER", "ADMIN", "MEMBER"];
+const ROLE_OPTIONS: Role[] = [
+  "OWNER",
+  "ADMIN",
+  "MANAGER",
+  "OPERATOR",
+  "FINANCE",
+  "VIEWER",
+];
 
 interface MembersTableProps {
   members: ClientTeamMember[];

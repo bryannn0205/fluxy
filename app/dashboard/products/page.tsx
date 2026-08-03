@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Pagination } from "@/components/common/Pagination";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { productService } from "@/services";
 import { ProductTable } from "@/app/dashboard/products/_components/ProductTable";
 import { ProductFormDialog } from "@/app/dashboard/products/_components/ProductFormDialog";
@@ -17,7 +18,8 @@ interface ProductsPageProps {
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const { page, search } = await searchParams;
-  const { companyId } = await requireCompany();
+  const { companyId, role } = await requireCompany();
+  const canManage = can(role, "products", "create");
 
   const products = await productService.list(companyId, {
     page: page ? Number(page) : 1,
@@ -29,7 +31,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       <PageHeader
         title="Produtos"
         description="Gerencie o catálogo de produtos e serviços."
-        action={<ProductFormDialog />}
+        action={canManage ? <ProductFormDialog /> : undefined}
       />
 
       {products.data.length === 0 ? (
@@ -44,7 +46,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         />
       ) : (
         <>
-          <ProductTable products={products.data} />
+          <ProductTable products={products.data} canManage={canManage} />
           <Pagination
             pagination={products.pagination}
             itemLabel="produto"

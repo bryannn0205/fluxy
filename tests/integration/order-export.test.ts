@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { Company } from "@/lib/generated/prisma/client";
 import { EXPORT_BATCH_SIZE } from "@/lib/constants";
 import { PrismaOrderRepository } from "@/repositories/implementations/PrismaOrderRepository";
 import { PrismaCustomerRepository } from "@/repositories/implementations/PrismaCustomerRepository";
@@ -14,6 +13,7 @@ import { NotificationService } from "@/services/NotificationService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -46,8 +46,8 @@ function makeCompany(label: string, suffix: string) {
 }
 
 describe.skipIf(!prisma)("Exportação de pedidos em CSV", () => {
-  let company: Company;
-  let otherCompany: Company;
+  let company: ActingCompany;
+  let otherCompany: ActingCompany;
   let userId: string;
   let customerId: string;
 
@@ -55,8 +55,8 @@ describe.skipIf(!prisma)("Exportação de pedidos em CSV", () => {
     if (!prisma) return;
     const suffix = randomUUID().slice(0, 8);
 
-    company = await makeCompany("A", suffix);
-    otherCompany = await makeCompany("B", suffix);
+    company = withRole(await makeCompany("A", suffix));
+    otherCompany = withRole(await makeCompany("B", suffix));
 
     const user = await prisma.user.create({
       data: {
@@ -181,7 +181,7 @@ describe.skipIf(!prisma)("Exportação de pedidos em CSV", () => {
 });
 
 describe.skipIf(!prisma)("Exportação além do tamanho do lote", () => {
-  let company: Company;
+  let company: ActingCompany;
 
   const TOTAL = EXPORT_BATCH_SIZE + 1;
 
@@ -189,7 +189,7 @@ describe.skipIf(!prisma)("Exportação além do tamanho do lote", () => {
     if (!prisma) return;
     const suffix = randomUUID().slice(0, 8);
 
-    company = await makeCompany("lote", suffix);
+    company = withRole(await makeCompany("lote", suffix));
 
     const user = await prisma.user.create({
       data: {

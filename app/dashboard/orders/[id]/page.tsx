@@ -22,6 +22,8 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatCurrency, formatDateTime, formatOrderNumber } from "@/lib/formatters";
 import { ROUTES } from "@/lib/constants";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
+import { redactOrderFinancials } from "@/types/orders";
 import { orderService } from "@/services";
 import { isR2Configured } from "@/lib/r2";
 import { OrderDetailsForm } from "@/app/dashboard/orders/[id]/_components/OrderDetailsForm";
@@ -41,12 +43,20 @@ export async function generateMetadata({
 
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
-  const { companyId } = await requireCompany();
+  const { companyId, role } = await requireCompany();
 
-  const order = await orderService.findById(id, companyId);
-  if (!order) {
+  const completo = await orderService.findById(id, companyId);
+  if (!completo) {
     notFound();
   }
+
+  // Sem `orders:viewFinancials`, os valores são retirados do objeto antes de
+  // qualquer renderização: o HTML que o servidor manda não contém preço
+  // unitário, subtotal, desconto, total nem forma de pagamento. Condicionar
+  // apenas o JSX esconderia o número da tela, mas ele continuaria no payload
+  // do React Server Component, a um "ver código-fonte" de distância.
+  const canViewFinancials = can(role, "orders", "viewFinancials");
+  const order = canViewFinancials ? completo : redactOrderFinancials(completo);
 
   return (
     <div className="space-y-6">
@@ -86,49 +96,59 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   <TableRow>
                     <TableHead>Produto</TableHead>
                     <TableHead className="text-right">Qtd.</TableHead>
-                    <TableHead className="text-right">Preço unit.</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    {canViewFinancials && (
+                      <>
+                        <TableHead className="text-right">Preço unit.</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.items.map((item) => (
+                  {completo.items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>{item.productName}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {formatCurrency(Number(item.unitPrice))}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {formatCurrency(Number(item.total))}
-                      </TableCell>
+                      {canViewFinancials && (
+                        <>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {formatCurrency(Number(item.unitPrice))}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {formatCurrency(Number(item.total))}
+                          </TableCell>
+                        </>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
 
-            <div className="mt-4 space-y-1 border-t pt-4 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-mono tabular-nums">
-                  {formatCurrency(Number(order.subtotal))}
-                </span>
-              </div>
-              {Number(order.discount) > 0 && (
+            {canViewFinancials && (
+              <div className="mt-4 space-y-1 border-t pt-4 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Desconto</span>
+                  <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-mono tabular-nums">
-                    -{formatCurrency(Number(order.discount))}
+                    {formatCurrency(Number(completo.subtotal))}
                   </span>
                 </div>
-              )}
-              <div className="flex justify-between text-base font-medium">
-                <span>Total</span>
-                <span className="font-mono tabular-nums">
-                  {formatCurrency(Number(order.total))}
-                </span>
+                {Number(completo.discount) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Desconto</span>
+                    <span className="font-mono tabular-nums">
+                      -{formatCurrency(Number(completo.discount))}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-medium">
+                  <span>Total</span>
+                  <span className="font-mono tabular-nums">
+                    {formatCurrency(Number(completo.total))}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {order.notes && (
               <p className="mt-4 border-t pt-4 text-sm text-muted-foreground">
@@ -154,19 +174,21 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-medium">Detalhes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <OrderDetailsForm
-                orderId={order.id}
-                priority={order.priority}
-                expectedDeliveryDate={order.expectedDeliveryDate}
-                paymentMethod={order.paymentMethod}
-              />
-            </CardContent>
-          </Card>
+          {canViewFinancials && can(role, "orders", "update") && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-medium">Detalhes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrderDetailsForm
+                  orderId={completo.id}
+                  priority={completo.priority}
+                  expectedDeliveryDate={completo.expectedDeliveryDate}
+                  paymentMethod={completo.paymentMethod}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -176,7 +198,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               <OrderAttachments
                 orderId={order.id}
                 attachments={order.attachments}
-                isUploadAvailable={isR2Configured()}
+                isUploadAvailable={isR2Configured() && can(role, "attachments", "create")}
               />
             </CardContent>
           </Card>

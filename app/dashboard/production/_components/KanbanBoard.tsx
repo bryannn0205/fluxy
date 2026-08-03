@@ -60,7 +60,13 @@ const announcements: Announcements = {
   },
 };
 
-export function KanbanBoard({ initialOrders }: { initialOrders: ClientKanbanOrder[] }) {
+export function KanbanBoard({
+  initialOrders,
+  readOnly = false,
+}: {
+  initialOrders: ClientKanbanOrder[];
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
   const sensors = useSensors(
@@ -125,10 +131,17 @@ export function KanbanBoard({ initialOrders }: { initialOrders: ClientKanbanOrde
       // cliente, causando mismatch de hidratação no React. Um id estável
       // aqui faz o dnd-kit usá-lo diretamente, sem contador.
       id="production-kanban"
-      sensors={sensors}
       collisionDetection={closestCorners}
       accessibility={{ announcements, screenReaderInstructions }}
-      onDragEnd={(event) => void handleDragEnd(event)}
+      // Sem sensor nenhum, nenhum arrasto chega a começar — nem por mouse nem
+      // por teclado. O DndContext continua montado porque os cards usam seus
+      // hooks; removê-lo quebraria a renderização em vez de só travar a ação.
+      // As props são omitidas, não passadas como undefined, por causa de
+      // exactOptionalPropertyTypes. O portão de verdade é o guard em
+      // OrderService.updateStatus: um POST forjado é barrado lá, não aqui.
+      {...(readOnly
+        ? {}
+        : { sensors, onDragEnd: (event: DragEndEvent) => void handleDragEnd(event) })}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {KANBAN_COLUMNS.map((status) => (

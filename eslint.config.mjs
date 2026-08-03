@@ -22,6 +22,22 @@ const eslintConfig = defineConfig([
         { prefer: "type-imports" },
       ],
       "no-console": "error",
+
+      // Descarte por desestruturação é a forma de remover uma chave de um
+      // objeto sem mutá-lo — é assim que os campos financeiros saem do payload
+      // em types/orders.ts e types/products.ts. A variável existe justamente
+      // para não ser usada, e o prefixo `_` declara essa intenção. Sem esta
+      // configuração, o padrão correto gera aviso e ensina a equipe a ignorar
+      // avisos, que é pior do que não tê-los.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
   {

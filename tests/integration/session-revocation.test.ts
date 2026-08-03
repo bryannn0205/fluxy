@@ -45,7 +45,7 @@ describe.skipIf(!prisma)("resolveCompanySession — revogação imediata", () =>
         companyId: company.id,
         name: "Usuário Sessão",
         email: `user-sessao-${suffix}@teste.com`,
-        role: "MEMBER",
+        role: "OPERATOR",
       },
     });
     userId = user.id;
@@ -77,11 +77,11 @@ describe.skipIf(!prisma)("resolveCompanySession — revogação imediata", () =>
     const resolved = await resolveCompanySession(userId, company.id);
     expect(resolved?.role).toBe("ADMIN");
 
-    await prisma!.user.update({ where: { id: userId }, data: { role: "MEMBER" } });
+    await prisma!.user.update({ where: { id: userId }, data: { role: "OPERATOR" } });
 
     const depois = await resolveCompanySession(userId, company.id);
     // Rebaixamento vale na hora — não espera o JWT expirar.
-    expect(depois?.role).toBe("MEMBER");
+    expect(depois?.role).toBe("OPERATOR");
   });
 
   it("não resolve usuário removido da equipe (soft delete)", async () => {

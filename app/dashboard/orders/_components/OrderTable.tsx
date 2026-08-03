@@ -15,7 +15,16 @@ import type { OrderListItem } from "@/types/orders";
 import { toClientOrderListItem } from "@/types/orders";
 import { OrderRowActions } from "@/app/dashboard/orders/_components/OrderRowActions";
 
-export function OrderTable({ orders }: { orders: OrderListItem[] }) {
+// `canViewFinancials` chega decidido de cima (Server Component com o papel da
+// sessão) e omite a coluna inteira, em vez de renderizar e esconder: valor
+// escondido por CSS continua no HTML que o servidor manda.
+export function OrderTable({
+  orders,
+  canViewFinancials,
+}: {
+  orders: OrderListItem[];
+  canViewFinancials: boolean;
+}) {
   return (
     <>
       <div className="hidden overflow-x-auto rounded-lg border md:block">
@@ -26,7 +35,7 @@ export function OrderTable({ orders }: { orders: OrderListItem[] }) {
               <TableHead>Cliente</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden lg:table-cell">Criado em</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+              {canViewFinancials && <TableHead className="text-right">Total</TableHead>}
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -48,11 +57,15 @@ export function OrderTable({ orders }: { orders: OrderListItem[] }) {
                 <TableCell className="hidden text-muted-foreground lg:table-cell">
                   {formatDate(order.createdAt)}
                 </TableCell>
-                <TableCell className="text-right font-mono tabular-nums">
-                  {formatCurrency(Number(order.total))}
-                </TableCell>
+                {canViewFinancials && (
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {formatCurrency(Number(order.total))}
+                  </TableCell>
+                )}
                 <TableCell>
-                  <OrderRowActions order={toClientOrderListItem(order)} />
+                  <OrderRowActions
+                    order={toClientOrderListItem(order, canViewFinancials)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
@@ -72,7 +85,9 @@ export function OrderTable({ orders }: { orders: OrderListItem[] }) {
               </Link>
               <div className="flex items-center gap-1">
                 <StatusBadge status={order.status} />
-                <OrderRowActions order={toClientOrderListItem(order)} />
+                <OrderRowActions
+                  order={toClientOrderListItem(order, canViewFinancials)}
+                />
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">{order.customer.name}</p>
@@ -80,9 +95,11 @@ export function OrderTable({ orders }: { orders: OrderListItem[] }) {
               <span className="text-xs text-muted-foreground">
                 {formatDate(order.createdAt)}
               </span>
-              <span className="font-mono text-sm font-medium tabular-nums">
-                {formatCurrency(Number(order.total))}
-              </span>
+              {canViewFinancials && (
+                <span className="font-mono text-sm font-medium tabular-nums">
+                  {formatCurrency(Number(order.total))}
+                </span>
+              )}
             </div>
           </div>
         ))}

@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/lib/errors";
+import { can, canAssignRole } from "@/lib/permissions";
 import { hashPassword } from "@/lib/password";
 import { sendEmail, teamInviteEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
@@ -44,7 +45,7 @@ export class TeamService {
   // equipe (listMembers) não passa por aqui de propósito: qualquer membro
   // pode ver quem está na empresa, só não pode geri-la.
   private assertCanManageTeam(actingUser: ActingUser): void {
-    if (actingUser.role !== "OWNER" && actingUser.role !== "ADMIN") {
+    if (!can(actingUser.role, "team", "invite")) {
       throw new ForbiddenError(
         "Somente proprietários e administradores podem gerenciar a equipe.",
       );
@@ -202,11 +203,19 @@ export class TeamService {
       throw new NotFoundError("Usuário");
     }
 
-    // Só quem já é OWNER pode conceder ou revogar posse — ADMIN gerencia
-    // ADMIN/MEMBER livremente, mas não mexe em quem é dono da empresa.
+    // Só quem já é OWNER pode conceder ou revogar posse — ADMIN gerencia os
+    // papéis abaixo livremente, mas não mexe em quem é dono da empresa.
     const touchesOwnership = target.role === "OWNER" || input.role === "OWNER";
     if (touchesOwnership && actingUser.role !== "OWNER") {
       throw new ForbiddenError("Somente o proprietário pode conceder ou remover posse.");
+    }
+
+    // Trava de escalada: promover alguém acima de si é conquistar por
+    // interposta pessoa um poder que não se tem. Hoje o caso concreto já é
+    // barrado pela regra de posse acima; esta continua valendo se um papel
+    // intermediário ganhar permissão de gerir equipe no futuro.
+    if (!canAssignRole(actingUser.role, input.role)) {
+      throw new ForbiddenError("Não é possível atribuir um papel superior ao seu.");
     }
 
     if (target.role === "OWNER" && input.role !== "OWNER") {

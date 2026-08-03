@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { formatDate } from "@/lib/formatters";
 import { ROUTES } from "@/lib/constants";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
 import { ProfileForm } from "@/app/dashboard/settings/_components/ProfileForm";
 import { CompanyForm } from "@/app/dashboard/settings/_components/CompanyForm";
@@ -89,7 +90,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        {company.role !== "MEMBER" && (
+        {can(company.role, "team", "view") && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-medium">Equipe</CardTitle>

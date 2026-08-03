@@ -1,5 +1,6 @@
 import { handleApiError } from "@/lib/api-handler";
 import { toCsvFilename } from "@/lib/csv";
+import { assertPermission } from "@/lib/permissions";
 import { requireCompanyForApi } from "@/lib/session";
 import { orderExportFilterSchema } from "@/schemas/order.schema";
 import { orderService } from "@/services";
@@ -12,6 +13,11 @@ import { orderService } from "@/services";
 export async function GET(request: Request): Promise<Response> {
   try {
     const company = await requireCompanyForApi();
+
+    // Antes de qualquer consulta: o CSV leva a base de clientes e o
+    // faturamento inteiro num arquivo. Esconder o botão não fecha a rota —
+    // ela responde a um GET direto de quem souber a URL.
+    assertPermission(company.role, "orders", "export");
 
     const { searchParams } = new URL(request.url);
     const filters = orderExportFilterSchema.parse({

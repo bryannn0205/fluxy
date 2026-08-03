@@ -4,6 +4,7 @@ import { Package } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { orderService, customerService, productService } from "@/services";
 import type { OrderStatus } from "@/lib/generated/prisma/client";
 import { toClientProduct } from "@/types/products";
@@ -34,6 +35,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   ]);
 
   const hasFilters = Boolean(search || status);
+  const canViewFinancials = can(company.role, "orders", "viewFinancials");
+  const canCreate = can(company.role, "orders", "create");
+  const canExport = can(company.role, "orders", "export");
 
   return (
     <div className="space-y-6">
@@ -42,11 +46,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         description="Acompanhe e gerencie os pedidos da sua empresa."
         action={
           <div className="flex items-center gap-2">
-            <ExportOrdersButton search={search} status={status} />
-            <CreateOrderDialog
-              customers={customers}
-              products={products.map(toClientProduct)}
-            />
+            {canExport && <ExportOrdersButton search={search} status={status} />}
+            {canCreate && (
+              <CreateOrderDialog
+                customers={customers}
+                products={products.map(toClientProduct)}
+              />
+            )}
           </div>
         }
       />
@@ -65,7 +71,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         />
       ) : (
         <>
-          <OrderTable orders={orders.data} />
+          <OrderTable orders={orders.data} canViewFinancials={canViewFinancials} />
           <Pagination
             pagination={orders.pagination}
             itemLabel="pedido"

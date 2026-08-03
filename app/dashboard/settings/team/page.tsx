@@ -19,6 +19,7 @@ import {
 import { PageHeader } from "@/components/common/PageHeader";
 import { ROUTES } from "@/lib/constants";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { teamService } from "@/services";
 import { toClientPendingInvitation, toClientTeamMember } from "@/types/team";
 import { MembersTable } from "@/app/dashboard/settings/team/_components/MembersTable";
@@ -30,8 +31,10 @@ export const metadata: Metadata = { title: "Equipe" };
 export default async function TeamPage() {
   const company = await requireCompany();
 
-  // Gerenciar equipe é ação de OWNER/ADMIN — ver mesma regra em TeamService.
-  if (company.role === "MEMBER") {
+  // Gerenciar equipe é ação de OWNER/ADMIN — a mesma regra é aplicada de novo
+  // dentro do TeamService, que é o portão de verdade. Aqui é só para não
+  // mostrar uma página vazia a quem não deveria chegar nela.
+  if (!can(company.role, "team", "view")) {
     redirect(ROUTES.SETTINGS);
   }
 

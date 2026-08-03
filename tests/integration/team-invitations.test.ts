@@ -7,7 +7,6 @@ import { PrismaInvitationRepository } from "@/repositories/implementations/Prism
 import { AuditService } from "@/services/AuditService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import { TeamService } from "@/services/TeamService";
-import type { Company } from "@/lib/generated/prisma/client";
 
 vi.mock("@/lib/email", () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
@@ -15,6 +14,7 @@ vi.mock("@/lib/email", () => ({
 }));
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -37,8 +37,8 @@ const teamService =
 // constraint real no banco (@@unique([companyId, email])) — precisa de
 // Postgres de verdade, não mock. Ver .claude/docs/development/testing.md.
 describe.skipIf(!prisma)("Convites de equipe", () => {
-  let companyA: Company;
-  let companyB: Company;
+  let companyA: ActingCompany;
+  let companyB: ActingCompany;
   let ownerAId: string;
   let ownerBId: string;
 
@@ -47,23 +47,27 @@ describe.skipIf(!prisma)("Convites de equipe", () => {
 
     const suffix = randomUUID().slice(0, 8);
 
-    companyA = await prisma.company.create({
-      data: {
-        name: `Equipe A ${suffix}`,
-        email: `equipe-a-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    companyA = withRole(
+      await prisma.company.create({
+        data: {
+          name: `Equipe A ${suffix}`,
+          email: `equipe-a-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
-    companyB = await prisma.company.create({
-      data: {
-        name: `Equipe B ${suffix}`,
-        email: `equipe-b-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    companyB = withRole(
+      await prisma.company.create({
+        data: {
+          name: `Equipe B ${suffix}`,
+          email: `equipe-b-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
     const ownerA = await prisma.user.create({
       data: {
@@ -107,7 +111,7 @@ describe.skipIf(!prisma)("Convites de equipe", () => {
   it("não permite revogar convite de outra empresa", async () => {
     const suffix = randomUUID().slice(0, 8);
     await teamService!.invite(
-      { email: `alvo-${suffix}@teste.com`, role: "MEMBER" },
+      { email: `alvo-${suffix}@teste.com`, role: "OPERATOR" },
       companyB,
       { id: ownerBId, role: "OWNER" },
     );
@@ -138,7 +142,7 @@ describe.skipIf(!prisma)("Convites de equipe", () => {
     const email = `renovar-${suffix}@teste.com`;
     const actor = { id: ownerAId, role: "OWNER" as const };
 
-    await teamService!.invite({ email, role: "MEMBER" }, companyA, actor);
+    await teamService!.invite({ email, role: "OPERATOR" }, companyA, actor);
     const [first] = await teamService!.listPendingInvitations(companyA.id);
     const firstToken = (await prisma!.invitation.findUnique({
       where: { id: first!.id },

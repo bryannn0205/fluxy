@@ -11,9 +11,9 @@ import { NotificationService } from "@/services/NotificationService";
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
 import { OrderService } from "@/services/OrderService";
 import { CustomerService } from "@/services/CustomerService";
-import type { Company } from "@/lib/generated/prisma/client";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -50,7 +50,7 @@ const customerService = customerRepository
 // Postgres real — mockar a cadeia do query builder do Prisma não pegaria um
 // erro de sintaxe da query nem provaria o resultado agregado correto.
 describe.skipIf(!prisma)("CustomerService.getStats", () => {
-  let company: Company;
+  let company: ActingCompany;
   let userId: string;
 
   beforeAll(async () => {
@@ -58,14 +58,16 @@ describe.skipIf(!prisma)("CustomerService.getStats", () => {
 
     const suffix = randomUUID().slice(0, 8);
 
-    company = await prisma.company.create({
-      data: {
-        name: `CRM Teste ${suffix}`,
-        email: `crm-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    company = withRole(
+      await prisma.company.create({
+        data: {
+          name: `CRM Teste ${suffix}`,
+          email: `crm-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
     const user = await prisma.user.create({
       data: {

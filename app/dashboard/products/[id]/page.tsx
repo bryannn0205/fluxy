@@ -16,8 +16,13 @@ import { StockMovementHistory } from "@/components/common/StockMovementHistory";
 import { formatCurrency } from "@/lib/formatters";
 import { ROUTES } from "@/lib/constants";
 import { requireCompany } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { productService, stockService } from "@/services";
-import { toClientProduct, calculateMarginPercent } from "@/types/products";
+import {
+  toClientProduct,
+  toClientProductWithCosts,
+  calculateMarginPercent,
+} from "@/types/products";
 import { ProductFormDialog } from "@/app/dashboard/products/_components/ProductFormDialog";
 import { StockAdjustmentDialog } from "@/app/dashboard/products/[id]/_components/StockAdjustmentDialog";
 
@@ -29,7 +34,7 @@ export const metadata: Metadata = { title: "Detalhe do produto" };
 
 export default async function ProductDetailPage({ params }: ProductDetailPageProps) {
   const { id } = await params;
-  const { companyId } = await requireCompany();
+  const { companyId, role } = await requireCompany();
 
   const product = await productService.findById(id, companyId);
   if (!product) {
@@ -37,8 +42,16 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
   }
 
   const movements = await stockService.listMovements(id, companyId);
-  const clientProduct = toClientProduct(product);
-  const marginPercent = calculateMarginPercent(clientProduct);
+
+  // Só monta o objeto com custo quando o papel pode vê-lo. Para OPERATOR e
+  // VIEWER o campo nem existe no que o servidor renderiza — não há número
+  // escondido no HTML esperando um Ctrl+U.
+  const canViewCosts = can(role, "products", "viewCosts");
+  const productWithCosts = canViewCosts ? toClientProductWithCosts(product) : null;
+  const clientProduct = productWithCosts ?? toClientProduct(product);
+  const marginPercent = productWithCosts
+    ? calculateMarginPercent(productWithCosts)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -63,7 +76,9 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
           <Badge variant={product.active ? "default" : "secondary"}>
             {product.active ? "Ativo" : "Inativo"}
           </Badge>
-          <ProductFormDialog product={clientProduct} />
+          {can(role, "products", "update") && productWithCosts && (
+            <ProductFormDialog product={productWithCosts} />
+          )}
         </div>
       </div>
 
@@ -84,33 +99,37 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Custo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-mono text-xl font-semibold tabular-nums">
-              {clientProduct.costPrice !== null
-                ? formatCurrency(clientProduct.costPrice)
-                : "—"}
-            </p>
-          </CardContent>
-        </Card>
+        {productWithCosts && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Custo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="font-mono text-xl font-semibold tabular-nums">
+                {productWithCosts.costPrice !== null
+                  ? formatCurrency(productWithCosts.costPrice)
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Margem
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-mono text-xl font-semibold tabular-nums">
-              {marginPercent !== null ? `${marginPercent.toFixed(1)}%` : "—"}
-            </p>
-          </CardContent>
-        </Card>
+        {productWithCosts && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Margem
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="font-mono text-xl font-semibold tabular-nums">
+                {marginPercent !== null ? `${marginPercent.toFixed(1)}%` : "—"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-2">

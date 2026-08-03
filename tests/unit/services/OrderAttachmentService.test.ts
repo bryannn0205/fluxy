@@ -6,29 +6,15 @@ import type { AuditService } from "@/services/AuditService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { OrderAttachmentRepository } from "@/repositories/interfaces/OrderAttachmentRepository";
 import type { OrderRepository } from "@/repositories/interfaces/OrderRepository";
-import type { Company, OrderAttachment } from "@/lib/generated/prisma/client";
+import type { OrderAttachment } from "@/lib/generated/prisma/client";
+import { buildCompany } from "../../helpers/company";
 import type { OrderWithRelations } from "@/types/orders";
 
 vi.mock("@/lib/r2", () => ({
   deleteFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-const activeCompany: Company = {
-  id: "company-1",
-  name: "Empresa Teste",
-  email: "empresa@teste.com",
-  cnpj: null,
-  phone: null,
-  planId: null,
-  subscriptionStatus: "ACTIVE",
-  trialEndsAt: new Date(),
-  asaasCustomerId: null,
-  asaasSubscriptionId: null,
-  nextOrderNumber: 1,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
+const activeCompany = buildCompany();
 
 function buildAttachment(overrides: Partial<OrderAttachment> = {}): OrderAttachment {
   return {
@@ -99,7 +85,7 @@ describe("OrderAttachmentService", () => {
 
   describe("create", () => {
     it("rejeita quando a assinatura da empresa expirou", async () => {
-      const expiredCompany: Company = { ...activeCompany, subscriptionStatus: "EXPIRED" };
+      const expiredCompany = buildCompany({ subscriptionStatus: "EXPIRED" });
 
       await expect(service.create(createInput, expiredCompany, "user-1")).rejects.toThrow(
         SubscriptionRequiredError,
@@ -138,7 +124,7 @@ describe("OrderAttachmentService", () => {
 
   describe("delete", () => {
     it("rejeita quando a assinatura da empresa expirou", async () => {
-      const expiredCompany: Company = { ...activeCompany, subscriptionStatus: "EXPIRED" };
+      const expiredCompany = buildCompany({ subscriptionStatus: "EXPIRED" });
 
       await expect(
         service.delete("attachment-1", expiredCompany, "user-1"),

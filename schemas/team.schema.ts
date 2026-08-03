@@ -8,7 +8,7 @@ import { emailSchema, passwordSchema } from "@/schemas/common.schema";
 // (ver TeamService).
 export const inviteMemberSchema = z.object({
   email: emailSchema,
-  role: z.enum(["ADMIN", "MEMBER"]),
+  role: z.enum(["ADMIN", "MANAGER", "OPERATOR", "FINANCE", "VIEWER"]),
 });
 
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
@@ -23,7 +23,7 @@ export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
 
 export const updateMemberRoleSchema = z.object({
   userId: z.string().min(1),
-  role: z.enum(["OWNER", "ADMIN", "MEMBER"]),
+  role: z.enum(["OWNER", "ADMIN", "MANAGER", "OPERATOR", "FINANCE", "VIEWER"]),
 });
 
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

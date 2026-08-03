@@ -119,10 +119,16 @@ model User {
   @@index([deletedAt])
 }
 
+// Ordenados do mais para o menos poderoso — a ordem é semântica, e
+// `lib/permissions.ts` é quem diz o que cada um pode. Não existe papel
+// PRODUCTION: será avaliado quando a área de produção for ampliada.
 enum Role {
   OWNER
   ADMIN
-  MEMBER
+  MANAGER
+  OPERATOR
+  FINANCE
+  VIEWER
 }
 
 // Convite pendente para um novo membro da equipe. Representa só o estado
@@ -136,7 +142,7 @@ model Invitation {
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   email String
-  role  Role   @default(MEMBER)
+  role  Role   @default(OPERATOR)
   token String @unique
 
   invitedById String

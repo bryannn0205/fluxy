@@ -28,14 +28,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { createProductSchema, type CreateProductInput } from "@/schemas/product.schema";
-import type { ClientProduct } from "@/types/products";
+import type { ClientProductWithCosts } from "@/types/products";
 import {
   createProductAction,
   updateProductAction,
 } from "@/app/dashboard/products/actions";
 
 interface ProductFormDialogProps {
-  product?: ClientProduct;
+  // Com custo: o formulário edita o campo, e quem chega aqui já passou pelo
+  // guard de products:update, cujos papéis todos têm products:viewCosts.
+  product?: ClientProductWithCosts;
 }
 
 export function ProductFormDialog({ product }: ProductFormDialogProps) {

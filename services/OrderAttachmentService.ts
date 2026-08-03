@@ -1,4 +1,5 @@
-import type { Company, OrderAttachment } from "@/lib/generated/prisma/client";
+import type { Company, OrderAttachment, Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import { NotFoundError } from "@/lib/errors";
 import { deleteFile } from "@/lib/r2";
 import type {
@@ -9,7 +10,11 @@ import type { OrderRepository } from "@/repositories/interfaces/OrderRepository"
 import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
-type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt">;
+// Inclui o papel porque o guard de permissão vive dentro do service — o
+// objeto passado é sempre o CompanySession de requireCompany(), que já o traz.
+type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt"> & {
+  role: Role;
+};
 
 export class OrderAttachmentService {
   constructor(
@@ -26,6 +31,7 @@ export class OrderAttachmentService {
     userId: string,
   ): Promise<OrderAttachment> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "attachments", "create");
 
     const order = await this.orderRepository.findById(data.orderId, company.id);
     if (!order) {
@@ -53,6 +59,7 @@ export class OrderAttachmentService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "attachments", "delete");
 
     const attachment = await this.repository.findById(id, company.id);
     if (!attachment) {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { handleAction } from "@/lib/action-handler";
 import { ValidationError } from "@/lib/errors";
+import { assertPermission } from "@/lib/permissions";
 import { emptyToNull } from "@/lib/utils";
 import { requireCompany } from "@/lib/session";
 import { companyRepository, userRepository } from "@/services";
@@ -33,11 +34,10 @@ export async function updateCompanyAction(
   const { companyId, role } = await requireCompany();
 
   return handleAction(async () => {
-    if (role !== "OWNER" && role !== "ADMIN") {
-      throw new ValidationError({
-        name: ["Apenas administradores podem editar a empresa"],
-      });
-    }
+    // Era ValidationError (422, "dados inválidos"), o que descrevia errado o
+    // que aconteceu: o dado estava correto, faltava permissão. ForbiddenError
+    // devolve 403 e não sugere ao usuário que corrija o formulário.
+    assertPermission(role, "settings", "updateCompany");
 
     const validation = updateCompanySchema.safeParse(input);
     if (!validation.success) {

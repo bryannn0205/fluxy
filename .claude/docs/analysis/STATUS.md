@@ -60,8 +60,18 @@
 - Ajuste manual (reposição/correção) com motivo e observação
 - Alertas de estoque baixo no Painel e na página de Estoque
 
-### Equipe e permissões
-- Papéis `OWNER` / `ADMIN` / `MEMBER`
+### Permissões (RBAC)
+- Seis papéis: `OWNER` / `ADMIN` / `MANAGER` / `OPERATOR` / `FINANCE` / `VIEWER`
+- Matriz declarativa única em `lib/permissions.ts` — `can()` para renderizar,
+  `assertPermission()` para barrar (ForbiddenError, 403)
+- O portão é o service; a interface esconde como complemento, nunca como proteção
+- **Campos financeiros são removidos do payload**, não escondidos por CSS:
+  VIEWER não recebe preço unitário, subtotal, desconto, total nem forma de
+  pagamento; OPERATOR e VIEWER não recebem custo nem margem
+- Exportação de CSV barrada na rota, antes de qualquer consulta
+
+### Equipe
+- Papéis geridos só por `OWNER` / `ADMIN`
 - Convite por e-mail com token e validade de 7 dias (reenvio renova, não duplica)
 - Página pública de aceite, criando a conta e autenticando na sequência
 - Alterar papel e remover membro, com as travas: ninguém altera o próprio papel,
@@ -105,6 +115,7 @@
 |---|---|
 | **Cobrança** | As env vars `ASAAS_*` existem em `lib/env.ts` e as colunas `asaasCustomerId`/`asaasSubscriptionId` existem em `Company`, mas **não há nenhum código de cobrança**. O provedor escolhido é a ValidaPay — ver decisões abaixo |
 | **Limites de plano** | `SubscriptionGateService` só decide "a assinatura está ativa?". Não existe contagem de uso nem teto por plano |
+| **Financeiro** | As permissões `finance:*` e `subscription:manage` já existem na matriz e têm teste, mas **não há código financeiro nem de cobrança para elas guardarem** — foram declaradas na Fase B para a Fase C nascer com o gate certo |
 | **Webhooks** | Não existe `app/api/webhooks/` |
 | **Impressão / PDF** | Sem geração de PDF (nenhuma lib instalada). CSV **já existe** — ver acima |
 | **Categorias de produto** | Não existe model `Category` |
@@ -142,6 +153,16 @@ Não são preferências herdadas nem acidentes de implementação:
 - **Seis papéis**, implementados de forma incremental: `OWNER`, `ADMIN`, `MANAGER`,
   `OPERATOR`, `FINANCE`, `VIEWER`. `PRODUCTION` fica para quando a produção for
   ampliada. Permissão se valida no service, nunca escondendo botão.
+- **A redação de campos financeiros é por omissão de chave, não por valor nulo.**
+  `redactOrderFinancials` e `toClientProduct` descartam as chaves por
+  desestruturação, então elas não existem no objeto serializado. Passar `null`
+  no lugar manteria o formato mas confundiria "sem permissão" com "sem valor" —
+  e `costPrice` nulo já significa "produto sem custo cadastrado". As variáveis
+  `_descartadas` que aparecem nesses arquivos existem para isso; o eslint está
+  configurado para aceitar o prefixo `_`.
+- **`ClientProduct` não tem `costPrice`; `ClientProductWithCosts` tem.** São dois
+  tipos em vez de um campo opcional, para o compilador cobrar a escolha em cada
+  ponto de uso em vez de deixar passar por esquecimento.
 - **Cinco status de pedido** por enquanto (`PENDING → PROCESSING → READY →
   COMPLETED`, mais `CANCELLED`). A ampliação para dez exige proposta própria
   mostrando impacto em schema, máquina de estados, Kanban, filtros, notificações,

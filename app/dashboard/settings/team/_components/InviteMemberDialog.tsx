@@ -37,7 +37,15 @@ import { inviteMemberSchema, type InviteMemberInput } from "@/schemas/team.schem
 import { ROLE_LABELS } from "@/lib/constants";
 import { inviteMemberAction } from "@/app/dashboard/settings/team/actions";
 
-const INVITABLE_ROLES: InviteMemberInput["role"][] = ["ADMIN", "MEMBER"];
+// OWNER fora da lista: conceder posse é sensível demais para caber num convite
+// por e-mail. Só depois, via alteração de papel, e só por quem já é OWNER.
+const INVITABLE_ROLES: InviteMemberInput["role"][] = [
+  "ADMIN",
+  "MANAGER",
+  "OPERATOR",
+  "FINANCE",
+  "VIEWER",
+];
 
 export function InviteMemberDialog() {
   const router = useRouter();
@@ -46,7 +54,7 @@ export function InviteMemberDialog() {
 
   const form = useForm<InviteMemberInput>({
     resolver: zodResolver(inviteMemberSchema),
-    defaultValues: { email: "", role: "MEMBER" },
+    defaultValues: { email: "", role: "OPERATOR" },
   });
 
   async function onSubmit(values: InviteMemberInput) {
@@ -68,7 +76,7 @@ export function InviteMemberDialog() {
 
     toast.success("Convite enviado");
     setOpen(false);
-    form.reset({ email: "", role: "MEMBER" });
+    form.reset({ email: "", role: "OPERATOR" });
     router.refresh();
   }
 

@@ -1,4 +1,5 @@
-import type { Company, StockMovement } from "@/lib/generated/prisma/client";
+import type { Company, StockMovement, Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import type {
   StockMovementWithProduct,
   StockRepository,
@@ -6,7 +7,11 @@ import type {
 import type { AdjustStockInput } from "@/schemas/stock.schema";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
-type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt">;
+// Inclui o papel porque o guard de permissão vive dentro do service — o
+// objeto passado é sempre o CompanySession de requireCompany(), que já o traz.
+type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt"> & {
+  role: Role;
+};
 
 export class StockService {
   constructor(
@@ -30,6 +35,7 @@ export class StockService {
     userId: string,
   ): Promise<StockMovement> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "stock", "adjust");
 
     const quantityDelta = input.direction === "IN" ? input.quantity : -input.quantity;
 

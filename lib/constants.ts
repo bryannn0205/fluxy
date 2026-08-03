@@ -70,7 +70,22 @@ export const EXPIRED_SESSION_LOGIN_URL = `${ROUTES.LOGIN}?${EXPIRED_SESSION_PARA
 export const ROLE_LABELS: Record<Role, string> = {
   OWNER: "Proprietário",
   ADMIN: "Administrador",
-  MEMBER: "Membro",
+  MANAGER: "Gerente",
+  OPERATOR: "Operador",
+  FINANCE: "Financeiro",
+  VIEWER: "Visualizador",
+};
+
+// O que cada papel faz, em uma linha — exibido ao escolher papel num convite
+// ou ao alterar o de um membro. Quem convida precisa entender a consequência
+// sem abrir a documentação. Ver lib/permissions.ts para a matriz completa.
+export const ROLE_DESCRIPTIONS: Record<Role, string> = {
+  OWNER: "Controle total, incluindo plano e cobrança",
+  ADMIN: "Gerencia equipe, configurações e toda a operação",
+  MANAGER: "Toda a operação e os valores, sem mexer em equipe",
+  OPERATOR: "Cria e toca pedidos no dia a dia; não vê custos nem relatórios",
+  FINANCE: "Valores, pagamentos e relatórios; não altera pedidos",
+  VIEWER: "Somente leitura da operação, sem nenhum valor financeiro",
 };
 
 // Chaves de módulo usadas em Plan.modules para o gate de acesso.

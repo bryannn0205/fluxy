@@ -12,9 +12,10 @@ import { NotificationService } from "@/services/NotificationService";
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
 import { OrderService } from "@/services/OrderService";
 import { StockService } from "@/services/StockService";
-import type { Company, Product } from "@/lib/generated/prisma/client";
+import type { Product } from "@/lib/generated/prisma/client";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -52,7 +53,7 @@ const stockService = stockRepository
 // Postgres de verdade (transações, increments atômicos), nunca mock. Ver
 // .claude/docs/development/testing.md.
 describe.skipIf(!prisma)("Ledger de estoque", () => {
-  let company: Company;
+  let company: ActingCompany;
   let userId: string;
   let customerId: string;
 
@@ -61,14 +62,16 @@ describe.skipIf(!prisma)("Ledger de estoque", () => {
 
     const suffix = randomUUID().slice(0, 8);
 
-    company = await prisma.company.create({
-      data: {
-        name: `Estoque Teste ${suffix}`,
-        email: `estoque-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    company = withRole(
+      await prisma.company.create({
+        data: {
+          name: `Estoque Teste ${suffix}`,
+          email: `estoque-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
     const user = await prisma.user.create({
       data: {

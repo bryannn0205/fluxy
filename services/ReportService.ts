@@ -1,3 +1,5 @@
+import type { Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import { startOfDaysAgoBrazil, toBrazilDateKey } from "@/lib/dates";
 import { REPORT_RANKING_SIZE } from "@/lib/constants";
 import type { ReportRepository } from "@/repositories/interfaces/ReportRepository";
@@ -11,8 +13,19 @@ export class ReportService {
    *
    * Não passa pelo SubscriptionGateService: o gate barra escrita, e relatório
    * é leitura pura — mesma regra das outras listagens.
+   *
+   * Passa, sim, pelo guard de permissão: todo número daqui é dinheiro, e
+   * OPERATOR e VIEWER não veem faturamento.
+   *
+   * @throws {ForbiddenError} Papel sem `reports:viewSales`
    */
-  async getSalesReport(companyId: string, period: ReportPeriod): Promise<SalesReport> {
+  async getSalesReport(
+    companyId: string,
+    period: ReportPeriod,
+    role: Role,
+  ): Promise<SalesReport> {
+    assertPermission(role, "reports", "viewSales");
+
     // period - 1: o período inclui hoje, então "30 dias" vai do início do dia
     // de 29 dias atrás até agora. Usar `period` cheio devolveria 31 dias.
     const since = startOfDaysAgoBrazil(period - 1);

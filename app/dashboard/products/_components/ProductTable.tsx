@@ -13,10 +13,16 @@ import { StockQuantityBadge } from "@/components/common/StockQuantityBadge";
 import { formatCurrency } from "@/lib/formatters";
 import { ROUTES } from "@/lib/constants";
 import type { Product } from "@/lib/generated/prisma/client";
-import { toClientProduct } from "@/types/products";
+import { toClientProductWithCosts } from "@/types/products";
 import { ProductRowActions } from "@/app/dashboard/products/_components/ProductRowActions";
 
-export function ProductTable({ products }: { products: Product[] }) {
+export function ProductTable({
+  products,
+  canManage,
+}: {
+  products: Product[];
+  canManage: boolean;
+}) {
   return (
     <>
       <div className="hidden overflow-x-auto rounded-lg border md:block">
@@ -61,7 +67,9 @@ export function ProductTable({ products }: { products: Product[] }) {
                   </span>
                 </TableCell>
                 <TableCell>
-                  <ProductRowActions product={toClientProduct(product)} />
+                  {canManage && (
+                    <ProductRowActions product={toClientProductWithCosts(product)} />
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -82,7 +90,9 @@ export function ProductTable({ products }: { products: Product[] }) {
                 </Link>
                 <p className="font-mono text-xs text-muted-foreground">{product.sku}</p>
               </div>
-              <ProductRowActions product={toClientProduct(product)} />
+              {canManage && (
+                <ProductRowActions product={toClientProductWithCosts(product)} />
+              )}
             </div>
             <div className="mt-3 flex items-center justify-between">
               <Badge variant={product.active ? "default" : "secondary"}>

@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import type { Company } from "@/lib/generated/prisma/client";
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
 import { PrismaOrderRepository } from "@/repositories/implementations/PrismaOrderRepository";
 import { PrismaCustomerRepository } from "@/repositories/implementations/PrismaCustomerRepository";
@@ -13,6 +12,7 @@ import { OrderService } from "@/services/OrderService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -36,8 +36,8 @@ const orderService =
 // updateMany com filtro composto — nenhum dos dois se prova com mock do query
 // builder, que não pegaria erro de constraint nem provaria o escopo do filtro.
 describe.skipIf(!prisma)("Notificações", () => {
-  let company: Company;
-  let otherCompany: Company;
+  let company: ActingCompany;
+  let otherCompany: ActingCompany;
   let ana: string;
   let bruno: string;
   let carla: string;
@@ -58,8 +58,8 @@ describe.skipIf(!prisma)("Notificações", () => {
         },
       });
 
-    company = await makeCompany("A");
-    otherCompany = await makeCompany("B");
+    company = withRole(await makeCompany("A"));
+    otherCompany = withRole(await makeCompany("B"));
 
     const makeUser = (companyId: string, name: string) =>
       prisma.user
@@ -68,7 +68,7 @@ describe.skipIf(!prisma)("Notificações", () => {
             companyId,
             name,
             email: `${name.toLowerCase()}-${suffix}@teste.com`,
-            role: "MEMBER",
+            role: "OPERATOR",
           },
         })
         .then((user) => user.id);
@@ -243,6 +243,7 @@ describe.skipIf(!prisma)("Notificações", () => {
       },
       {
         id: company.id,
+        role: "OWNER",
         subscriptionStatus: "ACTIVE",
         trialEndsAt: new Date(Date.now() + 86_400_000),
       },

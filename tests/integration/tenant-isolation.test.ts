@@ -14,9 +14,9 @@ import { PrismaNotificationRepository } from "@/repositories/implementations/Pri
 import { OrderService } from "@/services/OrderService";
 import { OrderAttachmentService } from "@/services/OrderAttachmentService";
 import { StockService } from "@/services/StockService";
-import type { Company } from "@/lib/generated/prisma/client";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
 
@@ -68,8 +68,8 @@ const stockService = stockRepository
 // mock de banco). Pulados automaticamente se DATABASE_URL não estiver
 // configurado (ex.: `npm run type-check` em ambiente sem banco).
 describe.skipIf(!prisma)("Isolamento multi-tenant — Orders", () => {
-  let companyA: Company;
-  let companyB: Company;
+  let companyA: ActingCompany;
+  let companyB: ActingCompany;
   let userBId: string;
   let orderBId: string;
   let attachmentBId: string;
@@ -80,23 +80,27 @@ describe.skipIf(!prisma)("Isolamento multi-tenant — Orders", () => {
 
     const suffix = randomUUID().slice(0, 8);
 
-    companyA = await prisma.company.create({
-      data: {
-        name: `Empresa A ${suffix}`,
-        email: `a-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    companyA = withRole(
+      await prisma.company.create({
+        data: {
+          name: `Empresa A ${suffix}`,
+          email: `a-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
-    companyB = await prisma.company.create({
-      data: {
-        name: `Empresa B ${suffix}`,
-        email: `b-${suffix}@teste.com`,
-        trialEndsAt: new Date(Date.now() + 86_400_000),
-        subscriptionStatus: "ACTIVE",
-      },
-    });
+    companyB = withRole(
+      await prisma.company.create({
+        data: {
+          name: `Empresa B ${suffix}`,
+          email: `b-${suffix}@teste.com`,
+          trialEndsAt: new Date(Date.now() + 86_400_000),
+          subscriptionStatus: "ACTIVE",
+        },
+      }),
+    );
 
     const userB = await prisma.user.create({
       data: {

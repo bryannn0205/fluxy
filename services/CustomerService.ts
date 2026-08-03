@@ -1,4 +1,5 @@
-import type { Company, Customer } from "@/lib/generated/prisma/client";
+import type { Company, Customer, Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import { NotFoundError } from "@/lib/errors";
 import type {
   CustomerRepository,
@@ -9,7 +10,11 @@ import type { ListOptions, PaginatedResult } from "@/types/common";
 import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
-type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt">;
+// Inclui o papel porque o guard de permissão vive dentro do service — o
+// objeto passado é sempre o CompanySession de requireCompany(), que já o traz.
+type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt"> & {
+  role: Role;
+};
 
 export class CustomerService {
   constructor(
@@ -24,6 +29,7 @@ export class CustomerService {
     userId: string,
   ): Promise<Customer> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "customers", "create");
 
     const customer = await this.repository.create(input, company.id);
 
@@ -45,6 +51,7 @@ export class CustomerService {
     userId: string,
   ): Promise<Customer> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "customers", "update");
 
     const customer = await this.repository.update(id, company.id, input);
 
@@ -65,6 +72,7 @@ export class CustomerService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "customers", "delete");
 
     const customer = await this.repository.findById(id, company.id);
     if (!customer) {

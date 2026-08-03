@@ -1,4 +1,5 @@
-import type { Company, Product } from "@/lib/generated/prisma/client";
+import type { Company, Product, Role } from "@/lib/generated/prisma/client";
+import { assertPermission } from "@/lib/permissions";
 import { DuplicateSkuError, NotFoundError } from "@/lib/errors";
 import type { ProductRepository } from "@/repositories/interfaces/ProductRepository";
 import type { CreateProductInput, UpdateProductInput } from "@/schemas/product.schema";
@@ -6,7 +7,11 @@ import type { ListOptions, PaginatedResult } from "@/types/common";
 import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
-type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt">;
+// Inclui o papel porque o guard de permissão vive dentro do service — o
+// objeto passado é sempre o CompanySession de requireCompany(), que já o traz.
+type GateCompany = Pick<Company, "subscriptionStatus" | "trialEndsAt"> & {
+  role: Role;
+};
 
 // "" (campo limpo no formulário) vira null (remove o valor no banco);
 // undefined (campo ausente de um update parcial) permanece undefined (não
@@ -30,6 +35,7 @@ export class ProductService {
     userId: string,
   ): Promise<Product> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "products", "create");
 
     const existing = await this.repository.findBySku(input.sku, company.id);
     if (existing) {
@@ -63,6 +69,7 @@ export class ProductService {
     userId: string,
   ): Promise<Product> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "products", "update");
 
     if (input.sku) {
       const existing = await this.repository.findBySku(input.sku, company.id);
@@ -94,6 +101,7 @@ export class ProductService {
     userId: string,
   ): Promise<void> {
     this.subscriptionGate.assertCanWrite(company);
+    assertPermission(company.role, "products", "delete");
 
     const product = await this.repository.findById(id, company.id);
     if (!product) {
