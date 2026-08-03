@@ -1,0 +1,542 @@
+// Prisma schema do Fluxy.
+// Ver .claude/docs/architecture/multi-tenant.md antes de alterar qualquer modelo.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// TENANT & ASSINATURA
+// =============================================================================
+
+model Company {
+  id    String  @id @default(cuid())
+  name  String
+  email String  @unique
+  cnpj  String? @unique
+  phone String?
+
+  planId String?
+  plan   Plan?   @relation(fields: [planId], references: [id])
+
+  subscriptionStatus  SubscriptionStatus @default(TRIALING)
+  trialEndsAt         DateTime
+  asaasCustomerId     String?
+  asaasSubscriptionId String?
+
+  // Contador atômico para gerar o próximo número de pedido da empresa.
+  nextOrderNumber Int @default(1)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users          User[]
+  customers      Customer[]
+  products       Product[]
+  orders         Order[]
+  auditLogs      AuditLog[]
+  attachments    OrderAttachment[]
+  stockMovements StockMovement[]
+  invitations    Invitation[]
+  notifications  Notification[]
+
+  @@index([deletedAt])
+}
+
+// Modela o plano de assinatura e quais módulos ele libera.
+// V1 tem um único Plan com todos os módulos — a estrutura já existe para
+// suportar tiers futuros (ex.: módulos de ERP vendidos separadamente) sem
+// exigir refatoração do gate de acesso. Ver .claude/docs/project/product.md.
+model Plan {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  priceMonthly Decimal  @db.Decimal(10, 2)
+  priceYearly  Decimal  @db.Decimal(10, 2)
+  modules      String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies Company[]
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+// =============================================================================
+// IDENTIDADE & AUTENTICAÇÃO (Auth.js — PrismaAdapter + sessão JWT)
+// =============================================================================
+
+model User {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name          String
+  // Globalmente único: o PrismaAdapter do Auth.js resolve usuários por
+  // e-mail sem escopo de tenant. Ver nota em lib/auth.ts.
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  // Nulo para usuários que só entram via OAuth (Google).
+  passwordHash  String?
+  role          Role      @default(OWNER)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accounts  Account[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  // Pedidos criados por este usuário e anexos enviados por ele — ambos
+  // preservados mesmo se o usuário for desativado (soft delete), nunca
+  // apagados em cascata: são registros de negócio, não dados descartáveis.
+  createdOrders       Order[]
+  uploadedAttachments OrderAttachment[]
+  stockMovements      StockMovement[]
+  sentInvitations     Invitation[]
+
+  // Recebidas e causadas: dois lados distintos da mesma tabela, por isso as
+  // relações são nomeadas.
+  notifications          Notification[] @relation("NotificationRecipient")
+  triggeredNotifications Notification[] @relation("NotificationActor")
+
+  @@index([companyId])
+  @@index([deletedAt])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// Convite pendente para um novo membro da equipe. Representa só o estado
+// PENDENTE — ao ser aceito, vira um User e esta linha é apagada (o rastro
+// permanece no AuditLog, não aqui). Isso mantém @@unique([companyId, email])
+// significando exatamente "só um convite pendente por e-mail", sem precisar
+// de índice parcial para ignorar convites já aceitos.
+model Invitation {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  email String
+  role  Role   @default(MEMBER)
+  token String @unique
+
+  invitedById String
+  invitedBy   User   @relation(fields: [invitedById], references: [id])
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, email])
+  @@index([companyId])
+}
+
+// Tabelas exigidas pelo contrato do @auth/prisma-adapter.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Não usada para leitura de sessão (estratégia é JWT), mas exigida pelo
+// contrato de tipos do PrismaAdapter. Ver .claude/docs/tech-stack/third-party.md.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =============================================================================
+// CLIENTES
+// =============================================================================
+
+model Customer {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name     String
+  email    String?
+  phone    String?
+  document String? // CPF ou CNPJ, apenas dígitos
+  address  String?
+  notes    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  orders Order[]
+
+  @@index([companyId, deletedAt])
+  @@index([companyId, name])
+}
+
+// =============================================================================
+// PRODUTOS
+// =============================================================================
+
+model Product {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  sku         String
+  name        String
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+  unit        String  @default("UN")
+  active      Boolean @default(true)
+
+  // Custo de aquisição/produção — opcional porque produtos existentes não
+  // têm esse dado retroativamente; a margem só é exibida quando presente.
+  costPrice Decimal? @db.Decimal(10, 2)
+
+  // Nunca escrito diretamente fora de StockService — toda variação deve
+  // gerar um StockMovement correspondente (ver StockRepository), para que
+  // o saldo seja sempre reconstruível a partir do ledger.
+  stockQuantity Int @default(0)
+
+  // Nulo = sem alerta de estoque baixo para este produto.
+  lowStockThreshold Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+
+  @@unique([companyId, sku])
+  @@index([companyId, deletedAt])
+  @@index([companyId, active])
+}
+
+// Ledger append-only de todas as variações de estoque — nunca UPDATE,
+// sempre INSERT. Product.stockQuantity é uma soma-cache do histórico aqui,
+// não a fonte de verdade: em caso de dúvida, o saldo é reconstruível
+// somando quantityDelta de todos os registros de um produto.
+model StockMovement {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  reason StockMovementReason
+
+  // Positivo = entrada, negativo = saída. Nunca zero (ver StockService).
+  quantityDelta Int
+  // Saldo de Product.stockQuantity resultante deste movimento — denormalizado
+  // para exibir o histórico sem recalcular a soma corrida a cada leitura.
+  balanceAfter  Int
+
+  // Observação livre — relevante para RESTOCK/ADJUSTMENT (ex.: "Compra NF
+  // 1234", "Contagem mensal", "Avaria no transporte"); ausente em SALE/
+  // CANCELLATION, cuja origem já é o orderId.
+  note String?
+
+  // Presente quando o movimento foi gerado automaticamente por um pedido
+  // (SALE na criação, CANCELLATION no cancelamento/exclusão).
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, productId, createdAt(sort: Desc)])
+  @@index([orderId])
+}
+
+enum StockMovementReason {
+  SALE
+  CANCELLATION
+  RESTOCK
+  ADJUSTMENT
+}
+
+// =============================================================================
+// PEDIDOS
+// =============================================================================
+
+model Order {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Gerado a partir de Company.nextOrderNumber — nunca reaproveitado após
+  // exclusão (soft delete), o que preserva rastreabilidade fiscal.
+  orderNumber String
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  status   OrderStatus @default(PENDING)
+  subtotal Decimal     @db.Decimal(10, 2)
+  discount Decimal     @default(0) @db.Decimal(10, 2)
+  total    Decimal     @db.Decimal(10, 2)
+  notes    String?
+
+  priority             OrderPriority  @default(NORMAL)
+  expectedDeliveryDate DateTime?
+  paymentMethod        PaymentMethod?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  items          OrderItem[]
+  auditLogs      AuditLog[]
+  attachments    OrderAttachment[]
+  stockMovements StockMovement[]
+  notifications  Notification[]
+
+  @@unique([companyId, orderNumber])
+  @@index([companyId, status, priority])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([companyId, expectedDeliveryDate])
+  @@index([companyId, deletedAt])
+  @@index([customerId])
+  @@index([createdById])
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  BOLETO
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Denormalizado para reforçar isolamento de tenant mesmo em queries
+  // diretas em OrderItem. Ver .claude/docs/architecture/multi-tenant.md.
+  companyId String
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Nome e preço são um snapshot do momento da venda — o pedido não pode
+  // mudar silenciosamente se o produto for renomeado ou reprecificado depois.
+  productName String
+  unitPrice   Decimal @db.Decimal(10, 2)
+  quantity    Int
+  total       Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([companyId])
+}
+
+// =============================================================================
+// AUDITORIA
+// =============================================================================
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action     AuditAction
+  resource   String
+  resourceId String
+  changes    Json?
+  ip         String?
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([companyId, resource, resourceId])
+  // Lidera com orderId (não companyId): serve o include aninhado
+  // Order.auditLogs, cujo tenant já foi verificado pela query pai — ver
+  // OrderRepository.findById. Diferente dos outros índices deste model,
+  // que servem consultas de topo (sempre lideradas por companyId).
+  @@index([orderId, createdAt(sort: Desc)])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  PERMISSION_CHANGE
+}
+
+// =============================================================================
+// ANEXOS DE PEDIDO
+// =============================================================================
+
+// Armazenado no Cloudflare R2 (ver lib/r2.ts) — fileKey é só a chave do
+// objeto, nunca a URL completa, para não exigir migração de dados se o
+// domínio/CDN público mudar no futuro.
+model OrderAttachment {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  category  AttachmentCategory
+  fileName  String
+  fileKey   String
+  mimeType  String
+  sizeBytes Int
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([orderId])
+  @@index([companyId, deletedAt])
+}
+
+enum AttachmentCategory {
+  NOTA
+  FOTO
+  DOCUMENTO
+  ARTE_CLIENTE
+  OUTRO
+}
+
+// =============================================================================
+// NOTIFICAÇÕES
+// =============================================================================
+
+// Uma linha por destinatário. O estado de "lido" é individual, então avisar
+// uma equipe de cinco pessoas grava cinco linhas. A alternativa — uma linha
+// só, mais uma tabela de leituras — economiza espaço mas cobra um join em
+// toda listagem; para equipes do tamanho que este produto atende, o
+// fan-out na escrita é o lado certo do trade-off.
+//
+// **Só eventos entram aqui, nunca condições.** "Estoque baixo" e "pedido
+// atrasado" são estado corrente, e o Painel os deriva por query. Gravá-los
+// como linha exigiria apagar a notificação quando a condição cessasse, e
+// reexecutar a checagem duplicaria o aviso — ver StockService e getStats.
+model Notification {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Cascade: notificação sem destinatário não significa nada. Diferente dos
+  // registros de negócio (pedidos, anexos), que sobrevivem à saída do usuário.
+  userId String
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Quem causou o evento — nulo quando a origem é o próprio sistema.
+  // Sem cascade: a notificação continua válida mesmo se o autor sair da equipe.
+  actorId String?
+  actor   User?   @relation("NotificationActor", fields: [actorId], references: [id])
+
+  type NotificationType
+
+  // Snapshot do que a linha precisa exibir (número do pedido, nome do
+  // cliente). Ler das relações a cada listagem custaria join e mostraria o
+  // estado de hoje num registro do que aconteceu ontem — o texto de uma
+  // notificação é histórico e não deve mudar sob os pés de quem leu.
+  data Json
+
+  // Só para o link "ver pedido". A relação existe para não acumular id
+  // pendurado; pedidos são excluídos por soft delete, então o cascade
+  // nunca dispara na prática.
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Serve a listagem do sino (destinatário + mais recentes primeiro).
+  @@index([userId, createdAt(sort: Desc)])
+  // Serve o contador de não lidas do badge, sem tocar nas linhas já lidas.
+  @@index([userId, readAt])
+}
+
+// Um único tipo para mudança de status, com o status novo dentro de `data`,
+// em vez de um valor de enum por status: acrescentar uma etapa ao fluxo do
+// pedido não deve exigir migração de banco.
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  ORDER_DELETED
+}

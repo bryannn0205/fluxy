@@ -1,0 +1,10 @@
+.next
+node_modules
+lib/generated
+prisma/migrations
+package-lock.json
+
+# Documentação de governança do projeto — não é código, não é reformatada
+CLAUDE.md
+AGENTS.md
+.claude/
