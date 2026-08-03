@@ -49,7 +49,8 @@ listava como "faltando" features prontas, o que levaria a recriar models e
 | [Frontend](.claude/docs/tech-stack/frontend.md)             | Next.js 15, React 19, Tailwind, shadcn/ui, TanStack Query |
 | [Backend](.claude/docs/tech-stack/backend.md)               | App Router, Server Actions, API Routes, Services          |
 | [Database](.claude/docs/tech-stack/database.md)             | Prisma, PostgreSQL, Redis, migrations, índices            |
-| [Infrastructure](.claude/docs/tech-stack/infrastructure.md) | Vercel, Neon, deploy, env vars, CI/CD                     |
+| [Deploy na Vercel](.claude/docs/tech-stack/deploy-vercel.md) | **Ao publicar.** Build, env vars, runtime, domínio, migrations |
+| [Infrastructure](.claude/docs/tech-stack/infrastructure.md) | Proposta anterior de infra — ver aviso no topo do arquivo |
 | [Third-party](.claude/docs/tech-stack/third-party.md)       | Auth.js, Asaas, Cloudflare R2, email                      |
 
 ### Arquitetura

@@ -1,5 +1,12 @@
 # 🚀 Infrastructure & Deployment
 
+> ⚠️ **Para deploy real, use [deploy-vercel.md](deploy-vercel.md).**
+> Aquele documento foi conferido contra o código em 03/08/2026. Este aqui é
+> anterior e descreve intenções que ainda não existem no repositório — o workflow
+> do GitHub Actions (não há `.github/`), o arquivo `.env.local` (o projeto usa
+> `.env`) e o Asaas como provedor de cobrança (a escolha é a ValidaPay, e não há
+> código de cobrança). Trate o conteúdo abaixo como proposta, não como estado.
+
 ## Hosting
 
 ### Frontend

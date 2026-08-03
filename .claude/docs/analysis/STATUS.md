@@ -1,6 +1,6 @@
 # 📊 Estado Real do Fluxy
 
-**Última verificação:** 02/08/2026
+**Última verificação:** 03/08/2026
 **Como foi verificado:** lendo o código, rodando `tsc`/`eslint`/`vitest`/`build` e exercitando os fluxos em navegador real (incluindo teste de isolamento entre duas empresas distintas).
 
 > ⚠️ **Leia antes de planejar qualquer coisa.**
@@ -18,7 +18,7 @@
 
 ## ✅ Implementado e verificado
 
-**Números:** 17 páginas · 14 models · 4 migrations · 9 services · 103 testes (11 arquivos, todos passando)
+**Números:** 19 páginas · 3 rotas de API · 15 models · 9 enums · 5 migrations · 11 services · 11 repositories · 174 testes (18 arquivos, todos passando)
 
 ### Autenticação e conta
 - Login por e-mail/senha (Argon2) e Google OAuth
@@ -103,7 +103,8 @@
 
 | Item | Observação |
 |---|---|
-| **Integração Asaas** | As env vars existem em `lib/env.ts`, mas não há nenhum código de cobrança |
+| **Cobrança** | As env vars `ASAAS_*` existem em `lib/env.ts` e as colunas `asaasCustomerId`/`asaasSubscriptionId` existem em `Company`, mas **não há nenhum código de cobrança**. O provedor escolhido é a ValidaPay — ver decisões abaixo |
+| **Limites de plano** | `SubscriptionGateService` só decide "a assinatura está ativa?". Não existe contagem de uso nem teto por plano |
 | **Webhooks** | Não existe `app/api/webhooks/` |
 | **Impressão / PDF** | Sem geração de PDF (nenhuma lib instalada). CSV **já existe** — ver acima |
 | **Categorias de produto** | Não existe model `Category` |
@@ -116,6 +117,36 @@
 ## 🧭 Decisões arquiteturais já tomadas
 
 Registradas aqui porque contrariam suposições comuns — **não as "corrija" sem motivo concreto**:
+
+### Confirmadas pelo dono do produto em 03/08/2026
+
+Estas cinco foram decididas explicitamente depois de uma auditoria do repositório.
+Não são preferências herdadas nem acidentes de implementação:
+
+- **Sem Supabase.** O banco é PostgreSQL via Prisma e a autenticação é Auth.js v5.
+  Não instalar `@supabase/*`, não criar client, não criar RLS, não substituir o
+  Auth.js. O isolamento entre empresas continua na camada de aplicação, reforçado
+  por `requireCompany()`, filtros obrigatórios de `companyId` e testes com duas
+  empresas reais. A conta Supabase existe mas não será usada.
+- **O provedor de pagamento é a ValidaPay, não o Asaas.** Os nomes `ASAAS_*` em
+  `lib/env.ts` e as colunas `asaasCustomerId`/`asaasSubscriptionId` são resquício
+  preparatório e serão renomeados para nomes **neutros de provedor**
+  (`paymentProvider`, `paymentCustomerId`, `paymentSubscriptionId`, `paymentPlanId`)
+  na fase de pagamentos, por migration apresentada antes de rodar. Nenhum endpoint,
+  evento ou payload da ValidaPay pode ser escrito antes da documentação oficial.
+- **Um usuário pertence a exatamente uma empresa** no MVP. `User.companyId` é
+  obrigatório e `User.email` é globalmente único. Não criar tabela de associação,
+  não fazer seletor de empresa, não mexer em autenticação ou sessão por causa disso.
+  Uma empresa continua podendo ter vários usuários. Multi-empresa por usuário é
+  evolução futura, planejada por último justamente por tocar login e toda query.
+- **Seis papéis**, implementados de forma incremental: `OWNER`, `ADMIN`, `MANAGER`,
+  `OPERATOR`, `FINANCE`, `VIEWER`. `PRODUCTION` fica para quando a produção for
+  ampliada. Permissão se valida no service, nunca escondendo botão.
+- **Cinco status de pedido** por enquanto (`PENDING → PROCESSING → READY →
+  COMPLETED`, mais `CANCELLED`). A ampliação para dez exige proposta própria
+  mostrando impacto em schema, máquina de estados, Kanban, filtros, notificações,
+  CSV, relatórios, testes e dados existentes.
+
 
 - **`Customer`, não `Client`.** O model se chama `Customer` em todo o código.
 - **Status do pedido:** `PENDING → PROCESSING → READY → COMPLETED`, mais `CANCELLED`.

@@ -36,6 +36,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# O template precisa ser versionado: é ele que diz a quem clona o repositório
+# quais variáveis existem. Só nomes e valores fictícios entram aqui — a regra
+# acima continua valendo para .env, .env.local e qualquer arquivo com segredo.
+!.env.example
+
 # vercel
 .vercel
 
