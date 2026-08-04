@@ -24,7 +24,8 @@ import { ROUTES } from "@/lib/constants";
 import { requireCompany } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { redactOrderFinancials } from "@/types/orders";
-import { orderService } from "@/services";
+import { financeService, orderService } from "@/services";
+import { PaymentPanel } from "@/app/dashboard/orders/[id]/_components/PaymentPanel";
 import { isR2Configured } from "@/lib/r2";
 import { OrderDetailsForm } from "@/app/dashboard/orders/[id]/_components/OrderDetailsForm";
 import { OrderTimeline } from "@/app/dashboard/orders/[id]/_components/OrderTimeline";
@@ -57,6 +58,14 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   // do React Server Component, a um "ver código-fonte" de distância.
   const canViewFinancials = can(role, "orders", "viewFinancials");
   const order = canViewFinancials ? completo : redactOrderFinancials(completo);
+
+  // O painel financeiro só é montado para quem tem `finance:view` — não é
+  // escondido depois de renderizado, então nem os valores nem o histórico de
+  // lançamentos entram no HTML de quem não pode vê-los.
+  const canViewFinance = can(role, "finance", "view");
+  const payments = canViewFinance
+    ? await financeService.listByOrder(id, companyId, role)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -173,6 +182,21 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               )}
             </CardContent>
           </Card>
+
+          {canViewFinance && (
+            <PaymentPanel
+              order={{
+                id: completo.id,
+                status: completo.status,
+                total: Number(completo.total),
+                paidAmount: Number(completo.paidAmount),
+                paymentStatus: completo.paymentStatus,
+                dueDate: completo.dueDate,
+              }}
+              payments={payments}
+              role={role}
+            />
+          )}
 
           {canViewFinancials && can(role, "orders", "update") && (
             <Card>

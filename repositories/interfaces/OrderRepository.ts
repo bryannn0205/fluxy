@@ -24,6 +24,9 @@ export interface CreateOrderData {
   items: CreateOrderItemData[];
   subtotal: number;
   discount: number;
+  deliveryFee: number;
+  surcharge: number;
+  // Já formado por lib/order-totals.ts — o repositório grava, não calcula.
   total: number;
   notes?: string | undefined;
   createdById: string;

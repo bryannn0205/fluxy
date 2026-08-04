@@ -45,6 +45,7 @@ model Company {
   stockMovements StockMovement[]
   invitations    Invitation[]
   notifications  Notification[]
+  payments       Payment[]
 
   @@index([deletedAt])
 }
@@ -114,7 +115,10 @@ model User {
   // relações são nomeadas.
   notifications          Notification[] @relation("NotificationRecipient")
   triggeredNotifications Notification[] @relation("NotificationActor")
+  registeredPayments     Payment[]
 
+  // Alvo da FK composta de Payment — ver a nota equivalente em Order.
+  @@unique([id, companyId])
   @@index([companyId])
   @@index([deletedAt])
 }
@@ -326,8 +330,29 @@ model Order {
   status   OrderStatus @default(PENDING)
   subtotal Decimal     @db.Decimal(10, 2)
   discount Decimal     @default(0) @db.Decimal(10, 2)
-  total    Decimal     @db.Decimal(10, 2)
-  notes    String?
+  // total = subtotal + deliveryFee + surcharge - discount. O cálculo vive em
+  // lib/order-totals.ts e em nenhum outro lugar — nem no formulário, nem no
+  // CSV, nem no relatório. Ver a nota lá sobre por que o servidor recalcula
+  // sempre a partir do preço do Product, ignorando qualquer total do cliente.
+  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
+  surcharge   Decimal @default(0) @db.Decimal(10, 2)
+  total       Decimal @db.Decimal(10, 2)
+  notes       String?
+
+  // Caches do ledger de Payment, reconstruíveis somando os lançamentos —
+  // mesma relação que Product.stockQuantity tem com StockMovement.
+  //
+  // Escritos SÓ pelo FinanceService e pelo cancelamento transacional, sempre
+  // dentro da transação que grava o Payment correspondente. Ficam fora dos
+  // schemas Zod de edição de pedido de propósito: nenhum input do usuário
+  // pode alcançá-los.
+  paidAmount    Decimal            @default(0) @db.Decimal(10, 2)
+  paymentStatus OrderPaymentStatus @default(PENDING)
+
+  // Vencimento. Mesma convenção de expectedDeliveryDate — meia-noite UTC do
+  // dia escolhido —, o que deixa isOverdue() de lib/dates.ts servir aos dois
+  // sem ramificação. Semanticamente é data; o horário é sempre 00:00.
+  dueDate DateTime?
 
   priority             OrderPriority  @default(NORMAL)
   expectedDeliveryDate DateTime?
@@ -344,7 +369,13 @@ model Order {
   attachments    OrderAttachment[]
   stockMovements StockMovement[]
   notifications  Notification[]
+  payments       Payment[]
 
+  // Alvo da FK composta de Payment. Redundante quanto à unicidade (id já é a
+  // chave primária) — existe só para o Postgres poder referenciar o par
+  // (id, companyId) e tornar impossível um pagamento apontar para pedido de
+  // outra empresa. A chave primária continua sendo `id` sozinho.
+  @@unique([id, companyId])
   @@unique([companyId, orderNumber])
   @@index([companyId, status, priority])
   @@index([companyId, createdAt(sort: Desc)])
@@ -545,4 +576,88 @@ enum NotificationType {
   ORDER_CREATED
   ORDER_STATUS_CHANGED
   ORDER_DELETED
+}
+
+// =============================================================================
+// FINANCEIRO DOS PEDIDOS
+// =============================================================================
+
+// Ledger append-only de recebimentos e estornos de um pedido. Nunca UPDATE,
+// nunca DELETE: corrigir um lançamento é registrar o oposto, e o erro
+// permanece visível — que é o que uma conferência contábil exige.
+//
+// **Nada aqui tem relação com a assinatura que a empresa paga pelo Fluxy.**
+// Aquilo vive em Company.subscriptionStatus e nos campos de provedor. São dois
+// fluxos de dinheiro em direções opostas; misturá-los faria o faturamento da
+// empresa somar a própria mensalidade.
+model Payment {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // Chaves compostas com companyId: o pedido e o autor precisam pertencer à
+  // MESMA empresa do pagamento. Não é validação de código que alguém pode
+  // esquecer de chamar — é impossibilidade estrutural, recusada pelo Postgres.
+  //
+  // Restrict nos dois sentidos: o ledger não some junto com uma exclusão
+  // física acidental (onDelete), e não acompanha troca de identificador ou de
+  // tenant (onUpdate). Mover pagamento entre empresas, se um dia for preciso,
+  // será um processo explícito e auditado — nunca um efeito colateral de
+  // cascata.
+  orderId String
+  order   Order  @relation(fields: [orderId, companyId], references: [id, companyId], onDelete: Restrict, onUpdate: Restrict)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById, companyId], references: [id, companyId], onDelete: Restrict, onUpdate: Restrict)
+
+  type PaymentType
+
+  // SEMPRE positivo — há CHECK no banco, além do Zod e do FinanceService.
+  // O sinal vem do `type`, nunca do número: guardar negativo permitiria um
+  // REFUND de valor negativo, que somaria em vez de subtrair.
+  amount Decimal @db.Decimal(10, 2)
+
+  // Método deste recebimento, não o do pedido. Metade no PIX e metade em
+  // dinheiro são dois Payment com métodos diferentes — Order.paymentMethod
+  // é só a forma combinada, e não prova nada sobre o que entrou.
+  method PaymentMethod
+
+  // Quando o dinheiro entrou de fato, que pode não ser quando foi lançado no
+  // sistema: PIX de sábado é conciliado na segunda.
+  paidAt DateTime
+
+  // Obrigatória em REFUND (validada no Zod e no FinanceService): estorno sem
+  // motivo escrito é rastro inútil na hora de auditar.
+  note String?
+
+  // Gerada pelo cliente ao abrir o formulário, não derivada dos dados — dois
+  // recebimentos legítimos de R$ 50 no PIX no mesmo minuto são normais. O
+  // índice único é a garantia contra clique duplo; a checagem no service é
+  // otimização.
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, orderId, paidAt(sort: Desc)])
+  @@index([companyId, paidAt(sort: Desc)])
+}
+
+enum PaymentType {
+  PAYMENT
+  REFUND
+}
+
+// "Atrasado" NÃO entra aqui de propósito: é condição (dueDate vencida e ainda
+// falta pagar), não fato com hora marcada. Gravá-lo exigiria um job noturno
+// virando pedidos, outro desvirando quando alguém pagasse, e entre a
+// meia-noite e o job o sistema mentiria. Derivado por isOverdue(), está sempre
+// certo. Mesma regra que vale para notificações — ver STATUS.md.
+enum OrderPaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+  CANCELLED
 }

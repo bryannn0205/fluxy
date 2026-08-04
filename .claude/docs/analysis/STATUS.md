@@ -103,6 +103,17 @@
 - Marcar uma como lida ou todas de uma vez; o estado de leitura é por usuário
 - Membro removido da equipe (soft delete) para de receber
 
+### Financeiro dos pedidos
+- Ledger append-only (`Payment`): recebimentos e estornos, nunca UPDATE nem DELETE
+- `Order.paidAmount` e `Order.paymentStatus` são caches reconstruíveis, escritos
+  só pelo `FinanceService` e pelo cancelamento transacional
+- Pagamento parcial, total, vários lançamentos e métodos diferentes no mesmo pedido
+- Estorno com justificativa obrigatória; estorno parcial devolve o pedido a PARTIAL
+- Taxa de entrega e acréscimo no pedido, com o total formado em `lib/order-totals.ts`
+- Vencimento (`dueDate`) e **atraso derivado** por `isOrderOverdue`, nunca gravado
+- Contas a receber em `/dashboard/finance/receivables`
+- Cancelar pedido com valor recebido é bloqueado; exige estorno antes
+
 ### Painel e configurações
 - KPIs (faturamento do mês, pedidos por etapa), alertas de atraso e de estoque baixo, pedidos recentes
 - Configurações de perfil, empresa e status da assinatura
@@ -115,7 +126,8 @@
 |---|---|
 | **Cobrança** | As env vars `ASAAS_*` existem em `lib/env.ts` e as colunas `asaasCustomerId`/`asaasSubscriptionId` existem em `Company`, mas **não há nenhum código de cobrança**. O provedor escolhido é a ValidaPay — ver decisões abaixo |
 | **Limites de plano** | `SubscriptionGateService` só decide "a assinatura está ativa?". Não existe contagem de uso nem teto por plano |
-| **Financeiro** | As permissões `finance:*` e `subscription:manage` já existem na matriz e têm teste, mas **não há código financeiro nem de cobrança para elas guardarem** — foram declaradas na Fase B para a Fase C nascer com o gate certo |
+| **Cobrança da assinatura** | As permissões `subscription:manage` existem na matriz e têm teste, mas não há código de cobrança para elas guardarem |
+| **Fluxo de caixa, despesas, conciliação** | Não existem. O financeiro cobre contas a receber dos pedidos, não a tesouraria da empresa |
 | **Webhooks** | Não existe `app/api/webhooks/` |
 | **Impressão / PDF** | Sem geração de PDF (nenhuma lib instalada). CSV **já existe** — ver acima |
 | **Categorias de produto** | Não existe model `Category` |
@@ -247,6 +259,42 @@ Não são preferências herdadas nem acidentes de implementação:
 - **`markRead` usa `updateMany` com filtro composto**, não `update` por id: `update`
   lançaria ao topar com linha de outro usuário, e o erro em si já revelaria que aquele id
   existe.
+- **⚠️ O Prisma NÃO envolve migrations em transação.** Medido em 03/08/2026 com uma
+  migration-sonda de dois comandos, o segundo inválido: o primeiro persistiu e a
+  migration ficou marcada como falha. **Toda migration nova deve abrir com `BEGIN;`
+  e fechar com `COMMIT;`.** A migration `20260803172812_role_expansion` traz um
+  comentário afirmando o contrário — ele está errado, e o arquivo não pode ser
+  corrigido porque o Prisma guarda checksum das migrations aplicadas. Aquela rodou
+  inteira, então não houve dano.
+- **Os CHECK constraints não existem no schema Prisma**, só nos arquivos de
+  migration (`Payment.amount > 0`, `deliveryFee/surcharge/paidAmount >= 0`). Um
+  `migrate reset` os recria pelo histórico; um `db push` a partir do schema, não.
+  **Não use `db push` neste projeto.**
+- **O ledger financeiro usa `RESTRICT` nos dois sentidos** (`onDelete` e `onUpdate`),
+  diferente de todo o resto do schema, que cascateia a partir de Company. O ledger
+  não some com exclusão física acidental nem acompanha troca de tenant. Consequência
+  prática: **os `afterAll` dos testes precisam apagar `Payment` antes** de order,
+  user e company, e uma empresa com pagamentos não pode ser excluída fisicamente.
+- **`Payment` referencia `Order` e `User` por chave composta com `companyId`**
+  (`@@unique([id, companyId])` nos dois). Pagamento apontar para pedido de outra
+  empresa é impossibilidade estrutural, recusada pelo Postgres — não validação de
+  código que alguém pode esquecer de chamar.
+- **Concorrência no lançamento é bloqueio pessimista** (`SELECT ... FOR UPDATE` no
+  pedido, dentro da transação), não isolamento Serializable. Serializable abortaria
+  a transação perdedora e exigiria laço de retry em toda operação financeira — e
+  retry em código que move dinheiro é onde nasce pagamento duplicado. É a segunda
+  query crua do projeto, depois de `getRevenueByDay`.
+- **Idempotência compara campos, não hash.** `(companyId, idempotencyKey)` é único;
+  mesma chave com mesmos dados devolve o lançamento existente, mesma chave com dados
+  diferentes lança `ConflictError` (409) e registra no logger. Um `requestHash`
+  exigiria serialização canônica de Decimal e Date, que é justamente onde nascem
+  falsos conflitos.
+- **`Order.paymentMethod` é a forma COMBINADA, não prova de recebimento.** O método
+  de cada entrada de dinheiro vive em `Payment.method` — um pedido combinado em
+  boleto pode ser pago metade no PIX. Relatório de recebimento usa `Payment.method`.
+- **Tentativa bloqueada vai para o logger, não para o AuditLog.** O AuditLog descreve
+  o que aconteceu com os dados; um cancelamento recusado não mudou nada. Gravar
+  não-eventos faria "o que aconteceu com este pedido" virar ruído.
 - **`requireCompany()` redireciona ao login; `requireCompanyForApi()` lança 401.** São dois
   wrappers do mesmo resolvedor porque Route Handler devolve JSON — redirecionar para HTML ali
   quebraria o cliente. O middleware precisa deixar passar `/login?session=expired`, senão
@@ -292,6 +340,46 @@ de quem tem a extensão instalada. Para confirmar que o aviso é externo, abra a
 janela anônima com extensões desativadas.
 
 ---
+
+## 🚧 Pendências operacionais
+
+Nenhuma delas é bug de código — são coisas do ambiente e da preparação para
+produção que ficaram registradas para não se perderem.
+
+### Backup do banco
+
+- **O dump JSON local não substitui backup nativo do PostgreSQL.** O que existe
+  hoje é um export de linhas por tabela, gerado por script antes de migrations
+  arriscadas. Ele não guarda sequences, tipos, índices, permissões nem o estado
+  do `_prisma_migrations` de forma restaurável — serve para conferir dados, não
+  para reconstruir o banco.
+- **Antes da produção:** configurar backup nativo (`pg_dump`/`pg_basebackup` ou o
+  backup gerenciado do provedor) **e testar a restauração**. Backup que nunca foi
+  restaurado é hipótese, não backup. O `pg_dump` não está instalado nesta máquina.
+
+### Migrations
+
+- **Não usar `db push` neste projeto.** Os CHECK constraints (`Payment.amount > 0`,
+  `deliveryFee`/`surcharge`/`paidAmount >= 0`) vivem apenas nos arquivos de
+  migration, porque o Prisma não os declara no schema. Um `db push` a partir do
+  schema recriaria o banco sem eles, e a última linha de defesa do financeiro
+  sumiria em silêncio.
+
+### Ambiente local (`prisma dev`)
+
+- **O daemon cai de forma reprodutível sob carga de teste** — cinco ocorrências em
+  03/08/2026, sempre com `P1017 ConnectionClosed` ou `ECONNRESET`, e sempre com o
+  processo se reportando como "running" e a porta ainda escutando. Reiniciar
+  resolve. É PGlite (Postgres em WASM), o que ajuda a explicar a fragilidade sob
+  concorrência. **Investigar separadamente** — não é defeito do Fluxy, mas
+  atrapalha toda verificação.
+- Sintoma associado: sobra um `server.lock.lock` órfão em
+  `%LOCALAPPDATA%\prisma-dev-nodejs\Data\durable-streams\default\`, que impede o
+  daemon de subir de novo até ser removido.
+- **`durable-streams.sqlite` cresceu para ~1,9 GB** (mais ~655 MB no servidor
+  `fluxy`, já removido). É o que encheu o disco em 03/08/2026. **Investigar sem
+  apagar de forma destrutiva** — o arquivo pode conter estado do WAL necessário
+  ao servidor; truncá-lo às cegas pode inutilizar o banco local.
 
 ## 🔍 Como verificar o estado por conta própria
 

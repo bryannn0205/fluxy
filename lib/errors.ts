@@ -53,6 +53,24 @@ export class ForbiddenError extends AppError {
   }
 }
 
+/**
+ * Estado atual do recurso impede a operação — 409.
+ *
+ * Diferente de ValidationError (422, "o dado está errado"): aqui o dado pode
+ * estar perfeito, mas conflita com o que já existe. O caso que motivou a
+ * classe é a mesma idempotencyKey chegando com payload diferente: nada a
+ * corrigir no formulário, e devolver sucesso seria mentir.
+ */
+export class ConflictError extends AppError {
+  readonly code = "CONFLICT";
+  readonly statusCode = 409;
+  readonly userMessage = "Esta operação conflita com o estado atual do registro";
+
+  constructor(message = "Conflict") {
+    super(message);
+  }
+}
+
 export class RateLimitError extends AppError {
   readonly code = "RATE_LIMIT";
   readonly statusCode = 429;

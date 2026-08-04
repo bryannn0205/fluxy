@@ -1,8 +1,10 @@
 import type {
   AttachmentCategory,
+  OrderPaymentStatus,
   OrderPriority,
   OrderStatus,
   PaymentMethod,
+  PaymentType,
   Role,
   StockMovementReason,
 } from "@/lib/generated/prisma/client";
@@ -52,6 +54,7 @@ export const ROUTES = {
   PRODUCTS: "/dashboard/products",
   PRODUCT_DETAIL: (id: string) => `/dashboard/products/${id}`,
   STOCK: "/dashboard/stock",
+  RECEIVABLES: "/dashboard/finance/receivables",
   REPORTS: "/dashboard/reports",
   SETTINGS: "/dashboard/settings",
   TEAM: "/dashboard/settings/team",
@@ -66,6 +69,22 @@ export const ROUTES = {
 export const EXPIRED_SESSION_PARAM = "session";
 export const EXPIRED_SESSION_VALUE = "expired";
 export const EXPIRED_SESSION_LOGIN_URL = `${ROUTES.LOGIN}?${EXPIRED_SESSION_PARAM}=${EXPIRED_SESSION_VALUE}`;
+
+// "Atrasado" não está aqui porque não é um valor de OrderPaymentStatus — é
+// condição derivada por isOrderOverdue(). A tela combina o rótulo abaixo com
+// o aviso de atraso; o banco guarda só o primeiro.
+export const PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
+  PENDING: "Pendente",
+  PARTIAL: "Parcial",
+  PAID: "Pago",
+  REFUNDED: "Estornado",
+  CANCELLED: "Cancelado",
+};
+
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  PAYMENT: "Recebimento",
+  REFUND: "Estorno",
+};
 
 export const ROLE_LABELS: Record<Role, string> = {
   OWNER: "Proprietário",

@@ -10,6 +10,7 @@ import { PrismaStockRepository } from "@/repositories/implementations/PrismaStoc
 import { PrismaInvitationRepository } from "@/repositories/implementations/PrismaInvitationRepository";
 import { PrismaReportRepository } from "@/repositories/implementations/PrismaReportRepository";
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
+import { PrismaPaymentRepository } from "@/repositories/implementations/PrismaPaymentRepository";
 import { AuditService } from "@/services/AuditService";
 import { AuthService } from "@/services/AuthService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
@@ -21,6 +22,7 @@ import { StockService } from "@/services/StockService";
 import { TeamService } from "@/services/TeamService";
 import { ReportService } from "@/services/ReportService";
 import { NotificationService } from "@/services/NotificationService";
+import { FinanceService } from "@/services/FinanceService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -37,6 +39,7 @@ const stockRepository = new PrismaStockRepository(prisma);
 const invitationRepository = new PrismaInvitationRepository(prisma);
 const reportRepository = new PrismaReportRepository(prisma);
 const notificationRepository = new PrismaNotificationRepository(prisma);
+const paymentRepository = new PrismaPaymentRepository(prisma);
 
 export const auditService = new AuditService(prisma);
 export const subscriptionGateService = new SubscriptionGateService();
@@ -69,6 +72,12 @@ export const orderService = new OrderService(
   auditService,
   subscriptionGateService,
   notificationService,
+);
+
+export const financeService = new FinanceService(
+  paymentRepository,
+  auditService,
+  subscriptionGateService,
 );
 
 export const orderAttachmentService = new OrderAttachmentService(

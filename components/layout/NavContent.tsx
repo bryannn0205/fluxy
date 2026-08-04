@@ -10,6 +10,7 @@ import {
   Package,
   ShoppingCart,
   Users,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -49,6 +50,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: "Gestão",
     items: [
       { href: ROUTES.STOCK, label: "Estoque", icon: Boxes },
+      { href: ROUTES.RECEIVABLES, label: "Contas a receber", icon: Wallet },
       { href: ROUTES.REPORTS, label: "Relatórios", icon: ChartLine },
     ],
   },

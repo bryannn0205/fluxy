@@ -1,9 +1,13 @@
 import type { Company, OrderStatus, Role } from "@/lib/generated/prisma/client";
 import { assertPermission } from "@/lib/permissions";
+import { assertValidOrderAmounts, buildOrderTotals } from "@/lib/order-totals";
+import { remainingAmount } from "@/lib/payment-status";
+import { logger } from "@/lib/logger";
 import {
   ORDER_PRIORITY_LABELS,
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
   VALID_ORDER_STATUS_TRANSITIONS,
 } from "@/lib/constants";
 import { CSV_BOM, toCsvDateTime, toCsvNumber, toCsvRow } from "@/lib/csv";
@@ -46,12 +50,20 @@ const ORDER_CSV_HEADERS = [
   "Documento",
   "Status",
   "Prioridade",
+  // Forma COMBINADA no pedido. O método de cada recebimento vive em
+  // Payment.method e não cabe nesta planilha, que é uma linha por pedido.
   "Forma de pagamento",
   "Previsão de entrega",
+  "Vencimento",
   "Itens",
   "Subtotal",
+  "Taxa de entrega",
+  "Acréscimo",
   "Desconto",
   "Total",
+  "Valor pago",
+  "Valor restante",
+  "Situação financeira",
   "Observações",
 ] as const;
 
@@ -111,19 +123,27 @@ export class OrderService {
 
     const subtotal = items.reduce((sum, item) => sum + item.total, 0);
 
-    if (input.discount > subtotal) {
-      throw new ValidationError({
-        discount: ["Desconto não pode ser maior que o subtotal"],
-      });
-    }
+    // Os valores vêm do input, mas o subtotal vem SEMPRE dos preços do banco
+    // (ver acima): o cliente escolhe quanto abater ou cobrar de entrega, nunca
+    // quanto vale o produto. O total é formado em lib/order-totals.ts, o mesmo
+    // módulo que o formulário usa para a prévia.
+    const totals = buildOrderTotals({
+      subtotal,
+      deliveryFee: input.deliveryFee ?? 0,
+      surcharge: input.surcharge ?? 0,
+      discount: input.discount,
+    });
+    assertValidOrderAmounts(totals);
 
     const order = await this.repository.create(
       {
         customerId: input.customerId,
         items,
-        subtotal,
-        discount: input.discount,
-        total: subtotal - input.discount,
+        subtotal: totals.subtotal,
+        discount: totals.discount,
+        deliveryFee: totals.deliveryFee,
+        surcharge: totals.surcharge,
+        total: totals.total,
         notes: input.notes,
         createdById: userId,
       },
@@ -151,6 +171,41 @@ export class OrderService {
   }
 
   /**
+   * Cancelar apaga o compromisso de venda, mas não devolve dinheiro — só o
+   * estorno faz isso, e ele deixa rastro no ledger. Permitir cancelar com
+   * saldo recebido criaria um pedido morto segurando dinheiro do cliente, sem
+   * registro de para onde ele foi.
+   *
+   * A tentativa bloqueada vai para o logger estruturado, não para o AuditLog:
+   * o AuditLog descreve o que **aconteceu** com os dados, e aqui nada mudou.
+   * Gravar não-eventos faria "o que aconteceu com este pedido" virar ruído.
+   *
+   * @throws {ValidationError} Pedido com valor líquido recebido
+   */
+  private assertPodeCancelar(
+    order: { id: string; paidAmount: unknown },
+    companyId: string,
+    userId: string,
+  ): void {
+    if (Number(order.paidAmount) <= 0) return;
+
+    logger.warn("Cancelamento bloqueado por saldo recebido", {
+      companyId,
+      userId,
+      resource: "order",
+      resourceId: order.id,
+      orderId: order.id,
+      motivo: "pedido possui valor líquido recebido",
+    });
+
+    throw new ValidationError({
+      status: [
+        "Este pedido possui pagamentos registrados. Estorne o valor recebido antes de cancelar.",
+      ],
+    });
+  }
+
+  /**
    * Altera o status do pedido, respeitando as transições válidas:
    * PENDING → PROCESSING | CANCELLED
    * PROCESSING → COMPLETED | CANCELLED
@@ -175,6 +230,10 @@ export class OrderService {
     const allowedTransitions = VALID_ORDER_STATUS_TRANSITIONS[order.status] ?? [];
     if (!allowedTransitions.includes(status)) {
       throw new InvalidStatusTransitionError(order.status, status);
+    }
+
+    if (status === "CANCELLED") {
+      this.assertPodeCancelar(order, company.id, userId);
     }
 
     await this.repository.updateStatus(orderId, company.id, status, userId);
@@ -261,6 +320,11 @@ export class OrderService {
       throw new NotFoundError("Pedido");
     }
 
+    // Excluir devolve estoque e encerra o pedido, tal qual cancelar — a mesma
+    // trava vale, senão a exclusão vira a porta de fuga para sumir com um
+    // pedido que tem dinheiro recebido.
+    this.assertPodeCancelar(order, company.id, userId);
+
     await this.repository.softDelete(id, company.id, userId);
 
     await this.auditService.log({
@@ -305,10 +369,22 @@ export class OrderService {
         ORDER_PRIORITY_LABELS[order.priority],
         order.paymentMethod ? PAYMENT_METHOD_LABELS[order.paymentMethod] : "",
         order.expectedDeliveryDate ? formatCalendarDate(order.expectedDeliveryDate) : "",
+        order.dueDate ? formatCalendarDate(order.dueDate) : "",
         String(order._count.items),
         toCsvNumber(Number(order.subtotal)),
+        toCsvNumber(Number(order.deliveryFee)),
+        toCsvNumber(Number(order.surcharge)),
         toCsvNumber(Number(order.discount)),
         toCsvNumber(Number(order.total)),
+        toCsvNumber(Number(order.paidAmount)),
+        // Restante calculado, não gravado — mesma fonte que a tela usa.
+        toCsvNumber(
+          remainingAmount({
+            total: Number(order.total),
+            paidAmount: Number(order.paidAmount),
+          }),
+        ),
+        PAYMENT_STATUS_LABELS[order.paymentStatus],
         order.notes ?? "",
       ]);
     }

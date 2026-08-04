@@ -35,9 +35,14 @@ export type OrderExportRow = Prisma.OrderGetPayload<{
     priority: true;
     paymentMethod: true;
     expectedDeliveryDate: true;
+    dueDate: true;
     subtotal: true;
     discount: true;
+    deliveryFee: true;
+    surcharge: true;
     total: true;
+    paidAmount: true;
+    paymentStatus: true;
     notes: true;
     customer: { select: { name: true; document: true } };
     _count: { select: { items: true } };

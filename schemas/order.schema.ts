@@ -25,10 +25,20 @@ export const createOrderItemSchema = z.object({
   quantity: z.number().int().positive("Quantidade deve ser maior que zero"),
 });
 
+// `paidAmount` e `paymentStatus` NÃO aparecem aqui, nem em nenhum outro schema
+// de pedido, e isso é proposital: são caches do ledger, escritos apenas pelo
+// FinanceService e pelo cancelamento transacional. Fora do schema, nenhum
+// input do usuário consegue alcançá-los — a proteção é o tipo, não a
+// disciplina de quem escreve a próxima Server Action.
 export const createOrderSchema = z.object({
   customerId: z.string().min(1, "Cliente é obrigatório"),
   items: z.array(createOrderItemSchema).min(1, "Adicione ao menos um item"),
   discount: z.number().min(0, "Desconto não pode ser negativo"),
+  // `.optional()` e não `.default(0)`: com default, o tipo de entrada do Zod
+  // difere do de saída, e o react-hook-form perde a inferência (o resolver
+  // passa a exigir dois genéricos incompatíveis). O zero vive no Service.
+  deliveryFee: z.number().min(0, "Taxa de entrega não pode ser negativa").optional(),
+  surcharge: z.number().min(0, "Acréscimo não pode ser negativo").optional(),
   notes: z.string().max(1000).optional().or(z.literal("")),
 });
 
@@ -65,6 +75,11 @@ export const updateOrderDetailsSchema = z.object({
   orderId: z.string().min(1),
   priority: z.enum(OrderPriority),
   expectedDeliveryDate: z.string().date().optional().or(z.literal("")),
+  // Mesmo formato de expectedDeliveryDate: <input type="date">, YYYY-MM-DD,
+  // gravado como meia-noite UTC. É o que deixa isOverdue() servir aos dois.
+  dueDate: z.string().date().optional().or(z.literal("")),
+  // Forma COMBINADA com o cliente, não prova de recebimento. O método de cada
+  // entrada de dinheiro vive em Payment.method.
   paymentMethod: z.enum(PaymentMethod).optional().or(z.literal("")),
 });
 
