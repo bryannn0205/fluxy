@@ -38,6 +38,8 @@ export interface CustomerRepository {
   listActive(companyId: string): Promise<Customer[]>;
   update(id: string, companyId: string, data: UpdateCustomerData): Promise<Customer>;
   softDelete(id: string, companyId: string): Promise<void>;
+  /** Clientes que ocupam vaga: `deletedAt IS NULL`. */
+  countNotDeleted(companyId: string): Promise<number>;
   /** Agregados de CRM — pedidos cancelados nunca contam como venda. */
   getStats(customerId: string, companyId: string): Promise<CustomerStats>;
 }

@@ -114,6 +114,16 @@
 - Contas a receber em `/dashboard/finance/receivables`
 - Cancelar pedido com valor recebido é bloqueado; exige estorno antes
 
+### Limites de plano
+- Quatro tetos em `Plan`: `maxUsers`, `maxOrdersPerMonth`, `maxProducts`, `maxCustomers`
+- `null` = ilimitado · `0` = bloqueado · positivo = teto
+- `PlanLimitService` é o único ponto que decide; `lib/plan-limits.ts` guarda a tabela
+- Cota de pedidos conferida **dentro** da transação de criação, sob o lock que já
+  gera o número do pedido — nenhuma janela para duas criações furarem o teto
+- Convite válido reserva vaga; aceitar troca reserva por usuário, sem somar
+- Negação é `PlanLimitReachedError` (402, code `PLAN_LIMIT_REACHED`), com recurso,
+  uso, limite, plano e caminho de upgrade
+
 ### Painel e configurações
 - KPIs (faturamento do mês, pedidos por etapa), alertas de atraso e de estoque baixo, pedidos recentes
 - Configurações de perfil, empresa e status da assinatura
@@ -125,7 +135,8 @@
 | Item | Observação |
 |---|---|
 | **Cobrança** | As env vars `ASAAS_*` existem em `lib/env.ts` e as colunas `asaasCustomerId`/`asaasSubscriptionId` existem em `Company`, mas **não há nenhum código de cobrança**. O provedor escolhido é a ValidaPay — ver decisões abaixo |
-| **Limites de plano** | `SubscriptionGateService` só decide "a assinatura está ativa?". Não existe contagem de uso nem teto por plano |
+| **Valores comerciais dos planos** | As colunas de limite existem e são aplicadas, mas nascem `null` (ilimitado). Preenchê-las em `standard` e `pro` é um passo comercial separado, ainda não executado |
+| **Limite de anexos** | Fora de escopo até a fase de consistência com o R2 — ver abaixo |
 | **Cobrança da assinatura** | As permissões `subscription:manage` existem na matriz e têm teste, mas não há código de cobrança para elas guardarem |
 | **Fluxo de caixa, despesas, conciliação** | Não existem. O financeiro cobre contas a receber dos pedidos, não a tesouraria da empresa |
 | **Webhooks** | Não existe `app/api/webhooks/` |
@@ -380,6 +391,32 @@ produção que ficaram registradas para não se perderem.
   `fluxy`, já removido). É o que encheu o disco em 03/08/2026. **Investigar sem
   apagar de forma destrutiva** — o arquivo pode conter estado do WAL necessário
   ao servidor; truncá-lo às cegas pode inutilizar o banco local.
+
+## 🔭 Fase futura: limites e consistência de anexos com R2
+
+Ficou **deliberadamente fora** da fase de limites, porque envolve consistência
+entre dois sistemas que não compartilham transação: PostgreSQL e Cloudflare R2.
+
+O fluxo atual sobe o arquivo ao R2 **antes** de gravar a linha
+(`app/api/orders/[id]/attachments/route.ts`), então uma falha na gravação deixa
+arquivo órfão — invisível e custando armazenamento para sempre.
+
+**A inversão simples foi avaliada e recusada:** gravar antes e subir depois só
+troca o órfão invisível por uma linha apontando para arquivo inexistente, que
+quebra o download. Uma inconsistência pela outra.
+
+O desenho a avaliar quando a fase chegar:
+
+- estado no anexo (`PENDING` / `READY` / `FAILED`)
+- reservar linha e vaga como `PENDING`, sob lock, dentro da transação
+- subir ao R2, marcar `READY`
+- em falha, marcar `FAILED` ou remover a reserva
+- listar e permitir download **apenas** de `READY`
+- rotina de conciliação para estados antigos presos em `PENDING`
+- proteção de concorrência na última vaga
+
+Só então `maxAttachmentsPerOrder` entra no `Plan`. Criar a coluna antes seria
+abrir espaço para um teto que ninguém aplica.
 
 ## 🔍 Como verificar o estado por conta própria
 

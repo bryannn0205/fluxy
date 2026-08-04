@@ -32,6 +32,20 @@ export interface CreateOrderData {
   createdById: string;
 }
 
+/**
+ * Cota mensal a validar DENTRO da transação de criação.
+ *
+ * O período vem de fora (lib/dates decide o que é "este mês em Brasília") e a
+ * regra também (o Service sabe o teto do plano); o repositório só garante que
+ * a contagem aconteça sob o mesmo lock que gera o número do pedido.
+ */
+export interface MonthlyQuotaCheck {
+  from: Date;
+  to: Date;
+  /** Lança se o uso estourou. Recebe a contagem lida sob lock. */
+  assert: (usageInPeriod: number) => void;
+}
+
 export interface OrderListOptions extends ListOptions {
   status?: OrderStatus | undefined;
   customerId?: string | undefined;
@@ -66,7 +80,31 @@ export interface OrderRepository {
    * Cria o pedido, seus itens e consome o próximo número sequencial da
    * empresa — tudo em uma única transação atômica.
    */
-  create(data: CreateOrderData, companyId: string): Promise<OrderWithRelations>;
+  create(
+    data: CreateOrderData,
+    companyId: string,
+    quota?: MonthlyQuotaCheck,
+  ): Promise<OrderWithRelations>;
+
+  /**
+   * Conta pedidos CRIADOS no período, INCLUINDO cancelados e soft-deleted.
+   *
+   * A ausência de `deletedAt: null` é o ponto inteiro do método. Todo o resto
+   * deste repositório filtra soft-deleted — inclusive `getStats`, que usa o
+   * mesmo `startOfMonthBrazil` para o faturamento. São perguntas parecidas com
+   * respostas diferentes:
+   *
+   *   getStats  → "quanto a empresa faturou?"   → excluído NÃO conta
+   *   este aqui → "quanta cota a empresa usou?" → excluído CONTA
+   *
+   * Se excluir devolvesse cota, o teto seria contornável em looping: criar,
+   * excluir, criar de novo. **Não acrescente `deletedAt: null` aqui.**
+   */
+  countCreatedInPeriodIncludingDeleted(
+    companyId: string,
+    from: Date,
+    to: Date,
+  ): Promise<number>;
   findById(id: string, companyId: string): Promise<OrderWithRelations | null>;
   findByNumber(
     orderNumber: string,

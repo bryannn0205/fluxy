@@ -20,6 +20,15 @@ export class PrismaUserRepository implements UserRepository {
     });
   }
 
+  async findByEmailIncludingDeleted(email: string): Promise<User | null> {
+    // Sem filtro de deletedAt, de propósito — ver a doc na interface.
+    return this.prisma.user.findUnique({ where: { email } });
+  }
+
+  async countActive(companyId: string): Promise<number> {
+    return this.prisma.user.count({ where: { companyId, deletedAt: null } });
+  }
+
   async updatePassword(id: string, passwordHash: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }

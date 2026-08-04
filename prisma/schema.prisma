@@ -60,7 +60,27 @@ model Plan {
   name         String
   priceMonthly Decimal  @db.Decimal(10, 2)
   priceYearly  Decimal  @db.Decimal(10, 2)
+  // Capacidades BINÁRIAS (EXPORT, FULL_REPORTS, AUTOMATIONS). As colunas
+  // abaixo respondem "quantos"; esta responde "tem ou não tem". Nenhuma
+  // duplica a outra — não crie booleano aqui para algo que já é módulo.
   modules      String[]
+
+  // Limites QUANTITATIVOS.
+  //   null     = ilimitado
+  //   0        = recurso bloqueado
+  //   positivo = teto
+  //
+  // Nascem null e assim ficam até um passo comercial separado preenchê-los
+  // por UPDATE — a migration não muda o comportamento de ninguém. São valores
+  // de negócio, ajustáveis no banco sem nova migration.
+  //
+  // maxAttachmentsPerOrder está FORA de propósito: o limite de anexos depende
+  // de consistência entre Postgres e R2 e será tratado em fase própria. Criar
+  // a coluna agora seria abrir espaço para um teto que ninguém aplica.
+  maxUsers          Int?
+  maxOrdersPerMonth Int?
+  maxProducts       Int?
+  maxCustomers      Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -379,6 +399,10 @@ model Order {
   @@unique([companyId, orderNumber])
   @@index([companyId, status, priority])
   @@index([companyId, createdAt(sort: Desc)])
+  // Serve "contas a receber" e o filtro de atraso, ambos liderados por
+  // empresa. Criado na migration do financeiro; declarado aqui para o schema
+  // não divergir do banco — sem esta linha, o próximo `migrate dev` o derruba.
+  @@index([companyId, paymentStatus, dueDate])
   @@index([companyId, expectedDeliveryDate])
   @@index([companyId, deletedAt])
   @@index([customerId])

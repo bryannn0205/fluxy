@@ -12,6 +12,7 @@ import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { InvitationRepository } from "@/repositories/interfaces/InvitationRepository";
 import type { UserRepository } from "@/repositories/interfaces/UserRepository";
 import type { Invitation, User } from "@/lib/generated/prisma/client";
+import type { PlanLimitService } from "@/services/PlanLimitService";
 import { buildCompany } from "../../helpers/company";
 
 vi.mock("@/lib/email", () => ({
@@ -24,6 +25,18 @@ vi.mock("@/lib/password", () => ({
 }));
 
 const activeCompany = buildCompany();
+
+// PlanLimitService que nunca barra: estes testes são sobre outra regra, e uma
+// cota inesperada aqui mascararia a falha que eles existem para pegar. Os
+// limites de plano têm testes próprios em tests/integration/plan-limits.
+const planLimitServiceStub = {
+  getCurrentPlan: vi.fn().mockResolvedValue(null),
+  getPlanLimits: vi.fn(),
+  getCurrentUsage: vi.fn().mockResolvedValue(0),
+  assertWithinLimit: vi.fn().mockResolvedValue(undefined),
+  assertCanAcceptInvite: vi.fn().mockResolvedValue(undefined),
+  assertCanInvite: vi.fn().mockResolvedValue(undefined),
+} as unknown as PlanLimitService;
 
 function buildUser(overrides: Partial<User> = {}): User {
   return {
@@ -76,6 +89,8 @@ describe("TeamService", () => {
       createMember: vi.fn(),
       updateRole: vi.fn(),
       softDelete: vi.fn(),
+      findByEmailIncludingDeleted: vi.fn().mockResolvedValue(null),
+      countActive: vi.fn().mockResolvedValue(0),
     };
 
     invitationRepository = {
@@ -84,6 +99,9 @@ describe("TeamService", () => {
       findByTokenWithCompany: vi.fn(),
       listPending: vi.fn(),
       delete: vi.fn(),
+      countValidPending: vi.fn().mockResolvedValue(0),
+      findByCompanyAndEmail: vi.fn().mockResolvedValue(null),
+      acceptWithinTransaction: vi.fn(),
     };
 
     auditService = {
@@ -95,6 +113,7 @@ describe("TeamService", () => {
       invitationRepository,
       auditService,
       new SubscriptionGateService(),
+      planLimitServiceStub,
     );
   });
 
@@ -111,7 +130,9 @@ describe("TeamService", () => {
     });
 
     it("rejeita quando o e-mail já pertence a um usuário", async () => {
-      vi.mocked(userRepository.findByEmail).mockResolvedValueOnce(buildUser());
+      vi.mocked(userRepository.findByEmailIncludingDeleted).mockResolvedValueOnce(
+        buildUser(),
+      );
 
       await expect(service.invite(input, activeCompany, ownerActor)).rejects.toThrow(
         EmailAlreadyInUseError,
@@ -121,7 +142,7 @@ describe("TeamService", () => {
     });
 
     it("cria o convite e envia o e-mail quando OWNER convida", async () => {
-      vi.mocked(userRepository.findByEmail).mockResolvedValueOnce(null);
+      vi.mocked(userRepository.findByEmailIncludingDeleted).mockResolvedValueOnce(null);
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
         buildUser({ id: "owner-1", name: "Dona Ana", role: "OWNER" }),
       );
@@ -145,7 +166,7 @@ describe("TeamService", () => {
     });
 
     it("permite ADMIN convidar", async () => {
-      vi.mocked(userRepository.findByEmail).mockResolvedValueOnce(null);
+      vi.mocked(userRepository.findByEmailIncludingDeleted).mockResolvedValueOnce(null);
       vi.mocked(userRepository.findById).mockResolvedValueOnce(
         buildUser({ role: "ADMIN" }),
       );
@@ -180,33 +201,60 @@ describe("TeamService", () => {
       vi.mocked(invitationRepository.findByToken).mockResolvedValueOnce(
         buildInvitation(),
       );
-      vi.mocked(userRepository.findByEmail).mockResolvedValueOnce(buildUser());
+      vi.mocked(userRepository.findByEmailIncludingDeleted).mockResolvedValueOnce(
+        buildUser(),
+      );
 
       await expect(service.acceptInvite(input)).rejects.toThrow(EmailAlreadyInUseError);
       expect(userRepository.createMember).not.toHaveBeenCalled();
     });
 
-    it("cria o usuário com o papel do convite e apaga o convite", async () => {
+    // Criar usuário e consumir convite passaram a ser uma transação só, no
+    // repositório — antes eram duas chamadas soltas, e um erro entre elas
+    // deixava convite consumido mas ainda utilizável. O duplo abaixo executa
+    // o callback para provar que a revalidação de cota roda lá dentro.
+    it("cria o usuário e consome o convite numa única transação", async () => {
       const invitation = buildInvitation({ role: "ADMIN" });
       vi.mocked(invitationRepository.findByToken).mockResolvedValueOnce(invitation);
-      vi.mocked(userRepository.findByEmail).mockResolvedValueOnce(null);
-      vi.mocked(userRepository.createMember).mockResolvedValueOnce(
-        buildUser({ id: "new-user", email: invitation.email, role: "ADMIN" }),
+      vi.mocked(userRepository.findByEmailIncludingDeleted).mockResolvedValueOnce(null);
+
+      vi.mocked(invitationRepository.acceptWithinTransaction).mockImplementationOnce(
+        async (_token, decidir) => {
+          // As contagens chegam prontas do repositório, lidas sob o lock —
+          // 4 usuários + 1 convite (o que está sendo aceito) num cenário sem
+          // teto, já que o duplo devolve plano null.
+          const dados = decidir({
+            companyId: invitation.companyId,
+            email: invitation.email,
+            activeUsers: 4,
+            validPendingInvitations: 1,
+          });
+
+          expect(dados).toMatchObject({
+            name: "Novo Membro",
+            passwordHash: "hashed-password",
+            emailVerified: true,
+          });
+
+          return {
+            user: buildUser({ id: "new-user", email: invitation.email, role: "ADMIN" }),
+            companyId: invitation.companyId,
+            email: invitation.email,
+          };
+        },
       );
 
       const result = await service.acceptInvite(input);
 
-      expect(userRepository.createMember).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: "company-1",
-          email: "convidado@teste.com",
-          role: "ADMIN",
-          passwordHash: "hashed-password",
-        }),
+      expect(invitationRepository.acceptWithinTransaction).toHaveBeenCalledWith(
+        "token-123",
+        expect.any(Function),
       );
-      expect(invitationRepository.delete).toHaveBeenCalledWith(
-        "invitation-1",
-        "company-1",
+      // A cota é revalidada DENTRO da transação: o estado pode ter mudado
+      // desde o envio do convite.
+      expect(planLimitServiceStub.assertCanAcceptInvite).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({ activeUsers: 4, validPendingInvitations: 1 }),
       );
       expect(result).toEqual({ companyId: "company-1", email: "convidado@teste.com" });
     });

@@ -1,4 +1,4 @@
-import type { Company } from "@/lib/generated/prisma/client";
+import type { Company, Plan } from "@/lib/generated/prisma/client";
 import type { RegisterInput } from "@/schemas/auth.schema";
 
 export interface CreateCompanyWithOwnerData {
@@ -16,4 +16,10 @@ export interface CompanyRepository {
   update(id: string, data: Partial<Pick<Company, "name" | "phone">>): Promise<Company>;
   /** Incrementa e retorna o próximo número de pedido, de forma atômica. */
   incrementOrderNumber(id: string): Promise<number>;
+  /**
+   * Plano vinculado à empresa, ou `null` quando não há — o caso do trial.
+   * Sem plano significa sem teto: travar quem está avaliando o produto seria
+   * o oposto do que o trial existe para fazer.
+   */
+  findPlanByCompany(companyId: string): Promise<Plan | null>;
 }

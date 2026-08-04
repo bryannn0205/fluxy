@@ -23,6 +23,7 @@ import type { InvitationPreview, InvitationWithInviter } from "@/types/team";
 import { toInvitationPreview } from "@/types/team";
 import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
+import type { PlanLimitService } from "@/services/PlanLimitService";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 
@@ -39,7 +40,40 @@ export class TeamService {
     private readonly invitationRepository: InvitationRepository,
     private readonly auditService: AuditService,
     private readonly subscriptionGate: SubscriptionGateService,
+    private readonly planLimitService: PlanLimitService,
   ) {}
+
+  /**
+   * Recusa e-mail que já pertence a QUALQUER usuário, inclusive removido.
+   *
+   * `User.email` é único GLOBALMENTE no banco, sem exceção para soft delete.
+   * A checagem antiga usava `findByEmail`, que ignora removidos — então
+   * convidar o e-mail de um ex-membro passava aqui e só explodia no aceite,
+   * com um P2002 cru chegando à interface.
+   *
+   * A mensagem pública é neutra de propósito: não revela se a conta está ativa
+   * ou removida, o que transformaria o formulário de convite num verificador
+   * de existência de contas. O detalhe fica no log interno.
+   */
+  private async assertEmailDisponivel(
+    email: string,
+    companyId: string,
+    invitedById: string,
+  ): Promise<void> {
+    const existente = await this.userRepository.findByEmailIncludingDeleted(email);
+    if (!existente) return;
+
+    logger.warn("Convite recusado: e-mail já associado a uma conta", {
+      companyId,
+      userId: invitedById,
+      resource: "invitation",
+      estado: existente.deletedAt ? "removido" : "ativo",
+      mesmaEmpresa: existente.companyId === companyId,
+      motivo: "e-mail já pertence a um User",
+    });
+
+    throw new EmailAlreadyInUseError();
+  }
 
   // Convidar/revogar/mudar papel/remover são ações administrativas — ler a
   // equipe (listMembers) não passa por aqui de propósito: qualquer membro
@@ -67,19 +101,32 @@ export class TeamService {
     this.subscriptionGate.assertCanWrite(company);
     this.assertCanManageTeam(actingUser);
 
-    const existingUser = await this.userRepository.findByEmail(input.email);
-    if (existingUser) {
-      throw new EmailAlreadyInUseError();
-    }
+    await this.assertEmailDisponivel(input.email, company.id, actingUser.id);
 
     const inviter = await this.userRepository.findById(actingUser.id, company.id);
     if (!inviter) {
       throw new NotFoundError("Usuário");
     }
 
-    const token = generateInviteToken();
-    const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+    const agora = new Date();
 
+    // Um convite pendente e VÁLIDO já ocupa uma vaga na contagem, então
+    // renová-lo não pode cobrar uma segunda. Um EXPIRADO havia saído da conta:
+    // ressuscitá-lo consome vaga de verdade e precisa de espaço livre.
+    const existente = await this.invitationRepository.findByCompanyAndEmail(
+      company.id,
+      input.email,
+    );
+    const jaReservaVaga = existente !== null && existente.expiresAt > agora;
+
+    await this.planLimitService.assertCanInvite(company.id, jaReservaVaga, agora);
+
+    const token = generateInviteToken();
+    const expiresAt = new Date(agora.getTime() + INVITATION_TTL_MS);
+
+    // upsert, não create: a mesma linha é renovada (novo token, nova validade)
+    // graças ao @@unique([companyId, email]). A constraint não renova nada
+    // sozinha — quem renova é este upsert; ela só torna o alvo endereçável.
     await this.invitationRepository.upsert({
       companyId: company.id,
       email: input.email,
@@ -146,41 +193,58 @@ export class TeamService {
   async acceptInvite(
     input: AcceptInvitationInput,
   ): Promise<{ companyId: string; email: string }> {
-    const invitation = await this.invitationRepository.findByToken(input.token);
+    const preliminar = await this.invitationRepository.findByToken(input.token);
 
-    if (!invitation || invitation.expiresAt < new Date()) {
+    if (!preliminar || preliminar.expiresAt < new Date()) {
       throw new ValidationError({ token: ["Este convite expirou ou é inválido."] });
     }
 
-    const existingUser = await this.userRepository.findByEmail(invitation.email);
-    if (existingUser) {
-      throw new EmailAlreadyInUseError();
-    }
+    await this.assertEmailDisponivel(
+      preliminar.email,
+      preliminar.companyId,
+      preliminar.invitedById,
+    );
 
+    // O hash fica FORA da transação: Argon2 leva centenas de milissegundos por
+    // design, e segurar o lock da empresa durante isso serializaria todos os
+    // aceites da empresa atrás de um cálculo de senha.
     const passwordHash = await hashPassword(input.password);
 
-    // E-mail é considerado verificado: clicar num link enviado a essa caixa
-    // já prova posse dela, diferente do cadastro autônomo (/register), que
-    // exige o fluxo separado de verify-email.
-    const user = await this.userRepository.createMember({
-      companyId: invitation.companyId,
-      name: input.name,
-      email: invitation.email,
-      passwordHash,
-      role: invitation.role,
-    });
+    // Um convite válido JÁ reserva vaga. No aceite ele é trocado por um
+    // usuário, então o uso total não muda:
+    //
+    //   projetado = ativos + convitesVálidos − reservaDeste + 1
+    //
+    // Com reservaDeste = 1, os dois últimos termos se cancelam. Sem esse
+    // desconto, uma empresa com 4 usuários, 1 convite e limite 5 recusaria o
+    // convidado — apesar de a vaga existir e estar reservada para ele.
+    // O plano é lido ANTES da transação: é dado estável (muda por ação
+    // comercial, não por concorrência) e consultá-lo lá dentro travaria, já
+    // que as contagens sob lock precisam da mesma conexão.
+    const plan = await this.planLimitService.getCurrentPlan(preliminar.companyId);
 
-    await this.invitationRepository.delete(invitation.id, invitation.companyId);
+    const { user, companyId, email } =
+      await this.invitationRepository.acceptWithinTransaction(input.token, (contexto) => {
+        this.planLimitService.assertCanAcceptInvite(plan, contexto);
+
+        return {
+          name: input.name,
+          passwordHash,
+          // E-mail considerado verificado: clicar num link enviado àquela
+          // caixa já prova posse dela, diferente do cadastro autônomo.
+          emailVerified: true,
+        };
+      });
 
     await this.auditService.log({
-      companyId: invitation.companyId,
+      companyId,
       userId: user.id,
       action: "CREATE",
       resource: "user",
       resourceId: user.id,
     });
 
-    return { companyId: invitation.companyId, email: invitation.email };
+    return { companyId, email };
   }
 
   /**

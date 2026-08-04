@@ -2,6 +2,13 @@
 // existe configuração de fuso por empresa, então usamos Horário de Brasília
 // (UTC-3, sem horário de verão desde 2019) como referência única de "hoje"
 // para regras de negócio como atraso de entrega.
+//
+// ATENÇÃO AO NOME: esta constante guarda a MAGNITUDE (3 horas), não o offset
+// assinado — Brasília é UTC−3, então o offset real seria −3. O código
+// compensa isso de forma consistente: SUBTRAI para ler os campos de um
+// instante como relógio de parede de Brasília, e SOMA ao devolver o instante
+// UTC correspondente à meia-noite local. Inverter qualquer um dos dois
+// desloca todos os cortes de período em 6 horas.
 const BUSINESS_TIMEZONE_UTC_OFFSET_HOURS = 3;
 const BUSINESS_OFFSET_MS = BUSINESS_TIMEZONE_UTC_OFFSET_HOURS * 60 * 60 * 1000;
 
@@ -19,6 +26,32 @@ export function startOfMonthBrazil(now: Date = new Date()): Date {
     Date.UTC(
       localNow.getUTCFullYear(),
       localNow.getUTCMonth(),
+      1,
+      BUSINESS_TIMEZONE_UTC_OFFSET_HOURS,
+      0,
+      0,
+      0,
+    ),
+  );
+}
+
+/**
+ * Início do mês SEGUINTE em horário de Brasília, como instante UTC.
+ *
+ * Par de {@link startOfMonthBrazil}, para fechar o mês corrente como o
+ * intervalo semiaberto `[startOfMonthBrazil, startOfNextMonthBrazil)` — que é
+ * o que a cota mensal de pedidos consulta.
+ *
+ * `Date.UTC` normaliza a virada de ano sozinho: mês 11 + 1 vira janeiro do ano
+ * seguinte, sem aritmética manual de ano. Ver tests/unit/lib/dates.test.ts,
+ * que prova 24 meses consecutivos sem lacuna nem sobreposição.
+ */
+export function startOfNextMonthBrazil(now: Date = new Date()): Date {
+  const local = new Date(now.getTime() - BUSINESS_OFFSET_MS);
+  return new Date(
+    Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth() + 1,
       1,
       BUSINESS_TIMEZONE_UTC_OFFSET_HOURS,
       0,

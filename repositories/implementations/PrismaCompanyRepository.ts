@@ -56,6 +56,15 @@ export class PrismaCompanyRepository implements CompanyRepository {
     return this.prisma.company.update({ where: { id }, data });
   }
 
+  async findPlanByCompany(companyId: string) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { plan: true },
+    });
+
+    return company?.plan ?? null;
+  }
+
   async incrementOrderNumber(id: string): Promise<number> {
     const company = await this.prisma.company.update({
       where: { id },

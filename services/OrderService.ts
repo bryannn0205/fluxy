@@ -3,6 +3,9 @@ import { assertPermission } from "@/lib/permissions";
 import { assertValidOrderAmounts, buildOrderTotals } from "@/lib/order-totals";
 import { remainingAmount } from "@/lib/payment-status";
 import { logger } from "@/lib/logger";
+import { startOfMonthBrazil, startOfNextMonthBrazil } from "@/lib/dates";
+import type { PlanLimitService } from "@/services/PlanLimitService";
+import { UPGRADE_PATH, limitFor } from "@/lib/plan-limits";
 import {
   ORDER_PRIORITY_LABELS,
   ORDER_STATUS_LABELS,
@@ -15,6 +18,7 @@ import { formatCalendarDate } from "@/lib/formatters";
 import {
   InvalidStatusTransitionError,
   NotFoundError,
+  PlanLimitReachedError,
   ValidationError,
 } from "@/lib/errors";
 import type {
@@ -75,6 +79,7 @@ export class OrderService {
     private readonly auditService: AuditService,
     private readonly subscriptionGate: SubscriptionGateService,
     private readonly notificationService: NotificationService,
+    private readonly planLimitService: PlanLimitService,
   ) {}
 
   /**
@@ -135,6 +140,13 @@ export class OrderService {
     });
     assertValidOrderAmounts(totals);
 
+    // A cota é conferida DENTRO da transação do repositório, sob o mesmo
+    // lock que gera o número do pedido — ver MonthlyQuotaCheck. Conferir aqui
+    // fora deixaria a janela em que duas criações leem a mesma contagem.
+    const plan = await this.planLimitService.getCurrentPlan(company.id);
+    const monthlyLimit = limitFor(plan, "ordersPerMonth");
+    const now = new Date();
+
     const order = await this.repository.create(
       {
         customerId: input.customerId,
@@ -148,6 +160,24 @@ export class OrderService {
         createdById: userId,
       },
       company.id,
+      monthlyLimit === null
+        ? undefined
+        : {
+            from: startOfMonthBrazil(now),
+            to: startOfNextMonthBrazil(now),
+            assert: (usageInPeriod) => {
+              if (usageInPeriod + 1 > monthlyLimit) {
+                throw new PlanLimitReachedError(
+                  "ordersPerMonth",
+                  "pedidos por mês",
+                  usageInPeriod,
+                  monthlyLimit,
+                  plan?.slug ?? "trial",
+                  UPGRADE_PATH,
+                );
+              }
+            },
+          },
     );
 
     await this.auditService.log({

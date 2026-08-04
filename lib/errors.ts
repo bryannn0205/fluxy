@@ -132,6 +132,48 @@ export class SubscriptionRequiredError extends AppError {
   }
 }
 
+/**
+ * A empresa atingiu o teto do plano para um recurso — 402.
+ *
+ * **Mesmo status de SubscriptionRequiredError, código diferente**, e isso é
+ * deliberado: 402 *Payment Required* descreve os dois ("uma ação comercial
+ * destrava isto"), e quem decide o que a tela mostra é o `code`, não o número.
+ * `SUBSCRIPTION_REQUIRED` pede reativação; `PLAN_LIMIT_REACHED` pede upgrade.
+ *
+ * **Não é 403.** Papel sem permissão é 403 e a saída é pedir acesso a um
+ * administrador; cota cheia é assunto comercial e a saída é mudar de plano.
+ * Confundir os dois faz o usuário procurar a solução errada.
+ *
+ * Carrega dados estruturados para a interface montar a mensagem — sem isso,
+ * "limite atingido" obriga a tela a adivinhar qual, quanto e para onde ir.
+ */
+export class PlanLimitReachedError extends AppError {
+  readonly code = "PLAN_LIMIT_REACHED";
+  readonly statusCode = 402;
+  readonly userMessage: string;
+
+  constructor(
+    readonly resource: string,
+    readonly resourceLabel: string,
+    readonly currentUsage: number,
+    readonly limit: number,
+    readonly planSlug: string,
+    readonly upgradePath: string,
+  ) {
+    super(`Plan limit reached: ${resource} (${currentUsage}/${limit})`, {
+      resource,
+      currentUsage,
+      limit,
+      planSlug,
+      upgradePath,
+    });
+
+    this.userMessage =
+      `Você atingiu o limite de ${limit} ${resourceLabel} do seu plano ` +
+      `(em uso: ${currentUsage}). Faça upgrade para continuar.`;
+  }
+}
+
 export class ExternalServiceError extends AppError {
   readonly code = "EXTERNAL_SERVICE_ERROR";
   readonly statusCode = 502;

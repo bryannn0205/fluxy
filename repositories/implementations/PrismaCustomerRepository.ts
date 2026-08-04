@@ -98,6 +98,10 @@ export class PrismaCustomerRepository implements CustomerRepository {
     return customer;
   }
 
+  async countNotDeleted(companyId: string): Promise<number> {
+    return this.prisma.customer.count({ where: { companyId, deletedAt: null } });
+  }
+
   async softDelete(id: string, companyId: string): Promise<void> {
     await this.prisma.customer.updateMany({
       where: { id, companyId },

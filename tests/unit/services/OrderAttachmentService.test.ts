@@ -69,6 +69,7 @@ describe("OrderAttachmentService", () => {
       updateDetails: vi.fn(),
       softDelete: vi.fn(),
       getStats: vi.fn(),
+      countCreatedInPeriodIncludingDeleted: vi.fn().mockResolvedValue(0),
     };
 
     auditService = {

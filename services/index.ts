@@ -23,6 +23,7 @@ import { TeamService } from "@/services/TeamService";
 import { ReportService } from "@/services/ReportService";
 import { NotificationService } from "@/services/NotificationService";
 import { FinanceService } from "@/services/FinanceService";
+import { PlanLimitService } from "@/services/PlanLimitService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -44,6 +45,17 @@ const paymentRepository = new PrismaPaymentRepository(prisma);
 export const auditService = new AuditService(prisma);
 export const subscriptionGateService = new SubscriptionGateService();
 
+// Instanciado antes dos services de negócio: todos que criam registro
+// dependem dele para conferir a cota do plano.
+export const planLimitService = new PlanLimitService(
+  companyRepository,
+  userRepository,
+  invitationRepository,
+  productRepository,
+  customerRepository,
+  orderRepository,
+);
+
 export const authService = new AuthService(
   companyRepository,
   userRepository,
@@ -55,12 +67,14 @@ export const customerService = new CustomerService(
   customerRepository,
   auditService,
   subscriptionGateService,
+  planLimitService,
 );
 
 export const productService = new ProductService(
   productRepository,
   auditService,
   subscriptionGateService,
+  planLimitService,
 );
 
 export const notificationService = new NotificationService(notificationRepository);
@@ -72,6 +86,7 @@ export const orderService = new OrderService(
   auditService,
   subscriptionGateService,
   notificationService,
+  planLimitService,
 );
 
 export const financeService = new FinanceService(
@@ -96,4 +111,5 @@ export const teamService = new TeamService(
   invitationRepository,
   auditService,
   subscriptionGateService,
+  planLimitService,
 );

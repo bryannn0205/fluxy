@@ -16,6 +16,7 @@ import { OrderAttachmentService } from "@/services/OrderAttachmentService";
 import { StockService } from "@/services/StockService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { buildPlanLimitService } from "../helpers/services";
 import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
@@ -46,6 +47,7 @@ const orderService =
         auditService,
         subscriptionGate,
         notificationService,
+        buildPlanLimitService(prisma!),
       )
     : null;
 

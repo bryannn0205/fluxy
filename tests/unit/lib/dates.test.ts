@@ -5,6 +5,7 @@ import {
   overdueCutoff,
   startOfDaysAgoBrazil,
   startOfMonthBrazil,
+  startOfNextMonthBrazil,
   toBrazilDateKey,
 } from "@/lib/dates";
 
@@ -59,6 +60,84 @@ describe("startOfMonthBrazil", () => {
   it("já reconhece como agosto às 03:00 UTC do dia 1º (00:00 em Brasília)", () => {
     const now = new Date("2026-08-01T03:00:00Z");
     expect(startOfMonthBrazil(now).toISOString()).toBe("2026-08-01T03:00:00.000Z");
+  });
+});
+
+// A constante do módulo guarda a MAGNITUDE do offset (3), não o valor
+// assinado (−3). Estes casos travam essa convenção: se alguém "corrigir" o
+// sinal, todo corte de período desloca 6 horas e o bloco inteiro quebra.
+//
+// A pegadinha é a meia-noite UTC — às 00:00Z ainda são 21:00 do dia ANTERIOR
+// em Brasília, e é aí que a cota mensal atribuiria o pedido ao mês errado.
+describe("fronteiras do mês comercial", () => {
+  /** Rótulo "YYYY-MM" do mês a que um início de mês corresponde. */
+  function mesComercial(inicioDoMes: Date): string {
+    return new Date(inicioDoMes.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 7);
+  }
+
+  it.each([
+    ["31/01/2026 23:59:59 BRT", "2026-02-01T02:59:59.000Z", "2026-01"],
+    ["01/02/2026 00:00:00 BRT", "2026-02-01T03:00:00.000Z", "2026-02"],
+    ["31/12/2026 23:59:59 BRT", "2027-01-01T02:59:59.000Z", "2026-12"],
+    ["01/01/2027 00:00:00 BRT", "2027-01-01T03:00:00.000Z", "2027-01"],
+    ["01/02 00:00 UTC (= 31/01 21:00 BRT)", "2026-02-01T00:00:00.000Z", "2026-01"],
+    ["01/01 00:00 UTC (= 31/12 21:00 BRT)", "2027-01-01T00:00:00.000Z", "2026-12"],
+  ])("%s pertence a %s", (_rotulo, instante, mesEsperado) => {
+    expect(mesComercial(startOfMonthBrazil(new Date(instante)))).toBe(mesEsperado);
+  });
+});
+
+describe("startOfNextMonthBrazil", () => {
+  it("avança de dezembro para janeiro do ano seguinte", () => {
+    const emDezembro = new Date("2026-12-15T15:00:00.000Z");
+
+    expect(startOfMonthBrazil(emDezembro).toISOString()).toBe("2026-12-01T03:00:00.000Z");
+    expect(startOfNextMonthBrazil(emDezembro).toISOString()).toBe(
+      "2027-01-01T03:00:00.000Z",
+    );
+  });
+
+  it("avança de janeiro para fevereiro", () => {
+    expect(
+      startOfNextMonthBrazil(new Date("2026-01-10T12:00:00.000Z")).toISOString(),
+    ).toBe("2026-02-01T03:00:00.000Z");
+  });
+
+  it.each([
+    ["31/01 23:59:59 BRT", "2026-02-01T02:59:59.000Z"],
+    ["01/02 00:00:00 BRT", "2026-02-01T03:00:00.000Z"],
+    ["31/12 23:59:59 BRT", "2027-01-01T02:59:59.000Z"],
+    ["01/01 00:00:00 BRT", "2027-01-01T03:00:00.000Z"],
+    ["meia-noite UTC de 01/02", "2026-02-01T00:00:00.000Z"],
+  ])("%s cai dentro do próprio intervalo [início, próximo)", (_rotulo, instante) => {
+    const agora = new Date(instante);
+
+    expect(agora.getTime()).toBeGreaterThanOrEqual(startOfMonthBrazil(agora).getTime());
+    expect(agora.getTime()).toBeLessThan(startOfNextMonthBrazil(agora).getTime());
+  });
+
+  // Sem esta propriedade, um pedido criado na virada cairia em dois meses
+  // (sobreposição) ou em nenhum (lacuna), e a cota mensal erraria a conta.
+  it("24 meses consecutivos são contíguos, sem lacuna nem sobreposição", () => {
+    for (let mes = 0; mes < 24; mes++) {
+      const meioDoMes = new Date(Date.UTC(2026, mes, 15, 15, 0, 0));
+      const proximo = startOfNextMonthBrazil(meioDoMes);
+
+      // O início do mês seguinte, calculado a partir de um instante DENTRO
+      // dele, tem de ser exatamente o mesmo instante.
+      const inicioDoSeguinte = startOfMonthBrazil(new Date(proximo.getTime() + 1_000));
+
+      expect(inicioDoSeguinte.toISOString()).toBe(proximo.toISOString());
+    }
+  });
+
+  it("o instante imediatamente anterior ao próximo início ainda é do mês corrente", () => {
+    const emJaneiro = new Date("2026-01-20T12:00:00.000Z");
+    const ultimoInstante = new Date(startOfNextMonthBrazil(emJaneiro).getTime() - 1);
+
+    expect(startOfMonthBrazil(ultimoInstante).toISOString()).toBe(
+      "2026-01-01T03:00:00.000Z",
+    );
   });
 });
 

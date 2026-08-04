@@ -9,6 +9,7 @@ import { NotFoundError } from "@/lib/errors";
 import { emptyToNull, stripUndefined } from "@/lib/utils";
 import type {
   CreateOrderData,
+  MonthlyQuotaCheck,
   OrderExportOptions,
   OrderListOptions,
   OrderRepository,
@@ -110,13 +111,47 @@ function buildOrderFilter(
 export class PrismaOrderRepository implements OrderRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async create(data: CreateOrderData, companyId: string): Promise<OrderWithRelations> {
+  /** Ver a doc na interface: sem `deletedAt: null`, e isso é intencional. */
+  async countCreatedInPeriodIncludingDeleted(
+    companyId: string,
+    from: Date,
+    to: Date,
+  ): Promise<number> {
+    return this.prisma.order.count({
+      where: { companyId, createdAt: { gte: from, lt: to } },
+    });
+  }
+
+  async create(
+    data: CreateOrderData,
+    companyId: string,
+    quota?: MonthlyQuotaCheck,
+  ): Promise<OrderWithRelations> {
     return this.prisma.$transaction(async (tx) => {
       const company = await tx.company.update({
         where: { id: companyId },
         data: { nextOrderNumber: { increment: 1 } },
         select: { nextOrderNumber: true },
       });
+
+      // A cota é conferida DEPOIS do update acima, e isso não é acaso: o
+      // UPDATE trava a linha da Company, então uma segunda requisição fica
+      // bloqueada ali até esta commitar — e aí conta já enxergando o pedido
+      // desta. Sem esse ponto de serialização, duas criações no último item
+      // disponível leriam a mesma contagem e ambas passariam.
+      //
+      // O rollback da transação desfaz também o incremento do contador, então
+      // recusar por cota não consome número de pedido.
+      if (quota) {
+        const usageInPeriod = await tx.order.count({
+          where: {
+            companyId,
+            createdAt: { gte: quota.from, lt: quota.to },
+            // deletedAt AUSENTE de propósito — ver a interface.
+          },
+        });
+        quota.assert(usageInPeriod);
+      }
 
       const orderNumber = String(company.nextOrderNumber - 1).padStart(4, "0");
 

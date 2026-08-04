@@ -104,6 +104,11 @@ export class PrismaProductRepository implements ProductRepository {
     return product;
   }
 
+  async countNotDeleted(companyId: string): Promise<number> {
+    // `active` deliberadamente fora do filtro — ver a doc na interface.
+    return this.prisma.product.count({ where: { companyId, deletedAt: null } });
+  }
+
   async softDelete(id: string, companyId: string): Promise<void> {
     await this.prisma.product.updateMany({
       where: { id, companyId },

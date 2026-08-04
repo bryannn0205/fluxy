@@ -1,5 +1,6 @@
 import type { Company, Product, Role } from "@/lib/generated/prisma/client";
 import { assertPermission } from "@/lib/permissions";
+import type { PlanLimitService } from "@/services/PlanLimitService";
 import { DuplicateSkuError, NotFoundError } from "@/lib/errors";
 import type { ProductRepository } from "@/repositories/interfaces/ProductRepository";
 import type { CreateProductInput, UpdateProductInput } from "@/schemas/product.schema";
@@ -27,6 +28,7 @@ export class ProductService {
     private readonly repository: ProductRepository,
     private readonly auditService: AuditService,
     private readonly subscriptionGate: SubscriptionGateService,
+    private readonly planLimitService: PlanLimitService,
   ) {}
 
   async create(
@@ -36,6 +38,10 @@ export class ProductService {
   ): Promise<Product> {
     this.subscriptionGate.assertCanWrite(company);
     assertPermission(company.role, "products", "create");
+    // Ordem: papel (403) → assinatura (402) → cota (402). Papel primeiro
+    // porque é a checagem barata e porque a saída é outra — quem não tem
+    // permissão precisa pedir acesso, não fazer upgrade.
+    await this.planLimitService.assertWithinLimit(company.id, "products");
 
     const existing = await this.repository.findBySku(input.sku, company.id);
     if (existing) {

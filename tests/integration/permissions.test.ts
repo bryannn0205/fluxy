@@ -20,6 +20,7 @@ import { toClientProduct, toClientProductWithCosts } from "@/types/products";
 import { redactOrderFinancials, toClientOrderListItem } from "@/types/orders";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { buildPlanLimitService } from "../helpers/services";
 import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
@@ -33,6 +34,7 @@ const orderService = prisma
       new AuditService(prisma),
       gate,
       new NotificationService(new PrismaNotificationRepository(prisma)),
+      buildPlanLimitService(prisma),
     )
   : null;
 
@@ -41,6 +43,7 @@ const productService = prisma
       new PrismaProductRepository(prisma),
       new AuditService(prisma),
       gate,
+      buildPlanLimitService(prisma),
     )
   : null;
 

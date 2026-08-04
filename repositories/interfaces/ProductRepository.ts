@@ -37,4 +37,12 @@ export interface ProductRepository {
   listActive(companyId: string): Promise<Product[]>;
   update(id: string, companyId: string, data: UpdateProductData): Promise<Product>;
   softDelete(id: string, companyId: string): Promise<void>;
+  /**
+   * Produtos que ocupam vaga: `deletedAt IS NULL`, ATIVOS OU NÃO.
+   *
+   * `active: false` não isenta de propósito. Se isentasse, o teto seria
+   * contornável em três passos: desativar tudo, criar de novo, reativar.
+   * Produto inativo continua no catálogo e volta a qualquer momento.
+   */
+  countNotDeleted(companyId: string): Promise<number>;
 }

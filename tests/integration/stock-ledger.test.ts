@@ -15,6 +15,7 @@ import { StockService } from "@/services/StockService";
 import type { Product } from "@/lib/generated/prisma/client";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { buildPlanLimitService } from "../helpers/services";
 import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
@@ -42,6 +43,7 @@ const orderService =
         auditService,
         subscriptionGate,
         notificationService,
+        buildPlanLimitService(prisma!),
       )
     : null;
 

@@ -13,6 +13,7 @@ import { NotificationService } from "@/services/NotificationService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { buildPlanLimitService } from "../helpers/services";
 import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
@@ -25,6 +26,7 @@ const orderService = prisma
       new AuditService(prisma),
       new SubscriptionGateService(),
       new NotificationService(new PrismaNotificationRepository(prisma)),
+      buildPlanLimitService(prisma),
     )
   : null;
 

@@ -13,10 +13,23 @@ import type { OrderRepository } from "@/repositories/interfaces/OrderRepository"
 import type { CustomerRepository } from "@/repositories/interfaces/CustomerRepository";
 import type { ProductRepository } from "@/repositories/interfaces/ProductRepository";
 import type { Customer, Product } from "@/lib/generated/prisma/client";
+import type { PlanLimitService } from "@/services/PlanLimitService";
 import { buildCompany } from "../../helpers/company";
 import type { OrderWithRelations } from "@/types/orders";
 
 const activeCompany = buildCompany();
+
+// PlanLimitService que nunca barra: estes testes são sobre outra regra, e uma
+// cota inesperada aqui mascararia a falha que eles existem para pegar. Os
+// limites de plano têm testes próprios em tests/integration/plan-limits.
+const planLimitServiceStub = {
+  getCurrentPlan: vi.fn().mockResolvedValue(null),
+  getPlanLimits: vi.fn(),
+  getCurrentUsage: vi.fn().mockResolvedValue(0),
+  assertWithinLimit: vi.fn().mockResolvedValue(undefined),
+  assertCanAcceptInvite: vi.fn().mockResolvedValue(undefined),
+  assertCanInvite: vi.fn().mockResolvedValue(undefined),
+} as unknown as PlanLimitService;
 
 function buildCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
@@ -90,6 +103,7 @@ describe("OrderService", () => {
       updateDetails: vi.fn(),
       softDelete: vi.fn(),
       getStats: vi.fn(),
+      countCreatedInPeriodIncludingDeleted: vi.fn().mockResolvedValue(0),
     };
 
     customerRepository = {
@@ -100,6 +114,7 @@ describe("OrderService", () => {
       update: vi.fn(),
       softDelete: vi.fn(),
       getStats: vi.fn(),
+      countNotDeleted: vi.fn().mockResolvedValue(0),
     };
 
     productRepository = {
@@ -111,6 +126,7 @@ describe("OrderService", () => {
       listActive: vi.fn(),
       update: vi.fn(),
       softDelete: vi.fn(),
+      countNotDeleted: vi.fn().mockResolvedValue(0),
     };
 
     auditService = {
@@ -130,6 +146,7 @@ describe("OrderService", () => {
       auditService,
       new SubscriptionGateService(),
       notificationService,
+      planLimitServiceStub,
     );
   });
 
@@ -174,6 +191,8 @@ describe("OrderService", () => {
 
       await service.create(validInput, activeCompany, "user-1");
 
+      // O 3o argumento é a cota mensal; `undefined` quando o plano não tem
+      // teto — que é o caso do duplo, cujo getCurrentPlan devolve null.
       expect(orderRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           subtotal: 200, // preço 100 x quantidade 2
@@ -181,6 +200,7 @@ describe("OrderService", () => {
           total: 200,
         }),
         "company-1",
+        undefined,
       );
     });
 

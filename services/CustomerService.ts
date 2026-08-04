@@ -1,5 +1,6 @@
 import type { Company, Customer, Role } from "@/lib/generated/prisma/client";
 import { assertPermission } from "@/lib/permissions";
+import type { PlanLimitService } from "@/services/PlanLimitService";
 import { NotFoundError } from "@/lib/errors";
 import type {
   CustomerRepository,
@@ -21,6 +22,7 @@ export class CustomerService {
     private readonly repository: CustomerRepository,
     private readonly auditService: AuditService,
     private readonly subscriptionGate: SubscriptionGateService,
+    private readonly planLimitService: PlanLimitService,
   ) {}
 
   async create(
@@ -30,6 +32,10 @@ export class CustomerService {
   ): Promise<Customer> {
     this.subscriptionGate.assertCanWrite(company);
     assertPermission(company.role, "customers", "create");
+    // Ordem: papel (403) → assinatura (402) → cota (402). Papel primeiro
+    // porque é a checagem barata e porque a saída é outra — quem não tem
+    // permissão precisa pedir acesso, não fazer upgrade.
+    await this.planLimitService.assertWithinLimit(company.id, "customers");
 
     const customer = await this.repository.create(input, company.id);
 

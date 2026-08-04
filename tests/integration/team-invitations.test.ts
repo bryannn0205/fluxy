@@ -14,6 +14,7 @@ vi.mock("@/lib/email", () => ({
 }));
 
 import { createTestPrismaClient } from "../helpers/prisma";
+import { buildPlanLimitService } from "../helpers/services";
 import { withRole, type ActingCompany } from "../helpers/company";
 
 const prisma = createTestPrismaClient();
@@ -30,6 +31,7 @@ const teamService =
         invitationRepository,
         auditService,
         subscriptionGate,
+        buildPlanLimitService(prisma!),
       )
     : null;
 
