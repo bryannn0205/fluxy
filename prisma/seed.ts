@@ -9,21 +9,152 @@ import { hashPassword } from "@/lib/password";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-async function seedDefaultPlan() {
-  const plan = await prisma.plan.upsert({
-    where: { slug: DEFAULT_PLAN_SLUG },
-    update: {},
-    create: {
-      slug: DEFAULT_PLAN_SLUG,
-      name: "Fluxy Standard",
-      priceMonthly: 59,
-      priceYearly: 590,
-      modules: Object.values(MODULE_KEYS),
+// Definição declarativa dos planos. Preço fica aqui só para a CRIAÇÃO — a
+// sincronização normal não o toca; ver seedPlans e applyApprovedPriceChange.
+const PLANS = [
+  {
+    slug: DEFAULT_PLAN_SLUG,
+    name: "Fluxy Standard",
+    priceMonthly: 29,
+    priceYearly: 290,
+    maxUsers: 5,
+    maxOrdersPerMonth: 500,
+    maxProducts: 500,
+    maxCustomers: 2000,
+  },
+  {
+    slug: "pro",
+    name: "Fluxy Pro",
+    priceMonthly: 89,
+    priceYearly: 890,
+    maxUsers: 20,
+    maxOrdersPerMonth: 3000,
+    maxProducts: 3000,
+    maxCustomers: 10_000,
+  },
+] as const;
+
+/**
+ * Sincroniza nome, módulos e limites — nunca preço.
+ *
+ * O `update` deixou de ser vazio de propósito. Com `update: {}`, mudar um
+ * limite aqui nunca chegava a uma instalação existente: foi assim que o
+ * `standard` ficou com 3 dos 5 módulos, criado antes de PRODUCTION e STOCK
+ * entrarem em MODULE_KEYS e nunca mais corrigido.
+ *
+ * **Preço fica fora do update.** Alterá-lo é decisão comercial com contrato
+ * por trás; um seed que reescreve preço a cada execução muda o que o cliente
+ * paga sem ninguém pedir. Preço só é gravado na criação, quando não há
+ * contrato anterior a respeitar.
+ *
+ * `modules` vem de Object.values(MODULE_KEYS), nunca de uma lista repetida
+ * aqui — duplicar a lista faz o banco divergir do código na primeira vez que
+ * um módulo novo for declarado.
+ */
+async function seedPlans() {
+  for (const plan of PLANS) {
+    const { slug, name, priceMonthly, priceYearly, ...limits } = plan;
+
+    const saved = await prisma.plan.upsert({
+      where: { slug },
+      update: {
+        name,
+        modules: Object.values(MODULE_KEYS),
+        ...limits,
+      },
+      create: {
+        slug,
+        name,
+        priceMonthly,
+        priceYearly,
+        modules: Object.values(MODULE_KEYS),
+        ...limits,
+      },
+    });
+
+    console.log(`Plan seeded: ${saved.name} (${saved.slug})`);
+  }
+}
+
+// Reajuste comercial aprovado em 04/08/2026 para o plano standard.
+// Aplica-se SOMENTE a este plano; o `pro` nunca é tocado por aqui.
+const APPROVED_PRICE_CHANGE = {
+  slug: DEFAULT_PLAN_SLUG,
+  // Strings, não números: a comparação é feita pelo Decimal do Prisma, e
+  // converter para Number para decidir sobre dinheiro é o hábito que produz
+  // erro de centavo.
+  from: { monthly: "59", yearly: "590" },
+  to: { monthly: "29", yearly: "290" },
+} as const;
+
+/**
+ * Reajuste de preço — exige autorização explícita por variável de ambiente.
+ *
+ * **Duas travas, e as duas precisam ceder:**
+ *
+ * 1. `APPLY_APPROVED_PLAN_PRICE_CHANGE` tem de ser exatamente `"true"`. Sem
+ *    isso o seed roda inteiro e não encosta em preço. Um seed que reajusta
+ *    sozinho porque "o banco ainda está no valor antigo" mudaria o que o
+ *    cliente paga em produção ou staging só por alguém ter rodado o comando.
+ * 2. O preço atual tem de ser EXATAMENTE o de origem aprovado. Se já foi
+ *    aplicado, ou se alguém definiu outro valor por outra via, o valor
+ *    existente é preservado — a flag autoriza *este* reajuste, não qualquer
+ *    sobrescrita.
+ *
+ * Depois de aplicado em produção, a flag deve ser removida imediatamente das
+ * variáveis do ambiente. Ela é controle operacional de uma execução, não
+ * configuração permanente. Ver a nota em .env.example.
+ */
+async function applyApprovedPriceChange() {
+  if (process.env.APPLY_APPROVED_PLAN_PRICE_CHANGE !== "true") {
+    console.log(
+      "Price change: ignorado — APPLY_APPROVED_PLAN_PRICE_CHANGE não está ativa.",
+    );
+    return;
+  }
+
+  const current = await prisma.plan.findUnique({
+    where: { slug: APPROVED_PRICE_CHANGE.slug },
+    select: { priceMonthly: true, priceYearly: true },
+  });
+
+  if (!current) {
+    console.log(
+      `Price change: plano ${APPROVED_PRICE_CHANGE.slug} não existe, ignorando.`,
+    );
+    return;
+  }
+
+  // `.equals()` é do Decimal e aceita string — compara valor, não formatação:
+  // 59, 59.0 e 59.00 são o mesmo número, e nenhum float entra na conta.
+  const atPricedOrigin =
+    current.priceMonthly.equals(APPROVED_PRICE_CHANGE.from.monthly) &&
+    current.priceYearly.equals(APPROVED_PRICE_CHANGE.from.yearly);
+
+  if (!atPricedOrigin) {
+    console.log(
+      `Price change: preço atual de ${APPROVED_PRICE_CHANGE.slug} ` +
+        `(${current.priceMonthly.toFixed(2)}/${current.priceYearly.toFixed(2)}) ` +
+        `não corresponde ao de origem aprovado ` +
+        `(${APPROVED_PRICE_CHANGE.from.monthly}/${APPROVED_PRICE_CHANGE.from.yearly}). ` +
+        "Valor existente preservado.",
+    );
+    return;
+  }
+
+  await prisma.plan.update({
+    where: { slug: APPROVED_PRICE_CHANGE.slug },
+    data: {
+      priceMonthly: APPROVED_PRICE_CHANGE.to.monthly,
+      priceYearly: APPROVED_PRICE_CHANGE.to.yearly,
     },
   });
 
-  console.log(`Plan seeded: ${plan.name} (${plan.slug})`);
-  return plan;
+  console.log(
+    `Price change APLICADO: ${APPROVED_PRICE_CHANGE.slug} ` +
+      `${APPROVED_PRICE_CHANGE.from.monthly}/${APPROVED_PRICE_CHANGE.from.yearly} -> ` +
+      `${APPROVED_PRICE_CHANGE.to.monthly}/${APPROVED_PRICE_CHANGE.to.yearly}`,
+  );
 }
 
 async function seedDemoCompany(planId: string) {
@@ -246,10 +377,19 @@ async function seedDemoCompany(planId: string) {
 }
 
 async function main() {
-  const plan = await seedDefaultPlan();
+  // Três etapas separadas de propósito, na ordem em que dependem uma da outra:
+  //   1. seedPlans              — cria o que falta, sincroniza nome/módulos/limites
+  //   2. applyApprovedPriceChange — reajuste comercial, auto-limitante
+  //   3. seedDemoCompany        — dados de demonstração, só fora de produção
+  await seedPlans();
+  await applyApprovedPriceChange();
+
+  const defaultPlan = await prisma.plan.findUniqueOrThrow({
+    where: { slug: DEFAULT_PLAN_SLUG },
+  });
 
   if (process.env.NODE_ENV !== "production") {
-    await seedDemoCompany(plan.id);
+    await seedDemoCompany(defaultPlan.id);
   }
 }
 

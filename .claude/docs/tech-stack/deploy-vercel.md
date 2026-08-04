@@ -100,6 +100,29 @@ validação lança no import, o que é proposital.
 > Rate limiting merece atenção: sem Upstash configurado, login, cadastro e convite
 > ficam **sem limite de tentativa** em produção.
 
+### `APPLY_APPROVED_PLAN_PRICE_CHANGE` — flag temporária, nunca permanente
+
+**Não configure esta variável na Vercel.** Ela existe para uma execução
+deliberada do seed e nada mais.
+
+- O seed normal **não altera preço de plano existente** — sincroniza apenas
+  nome, módulos e limites, e cria planos que faltem com o preço inicial deles.
+- Reajuste comercial é procedimento explícito: exige a flag valendo exatamente
+  `"true"` **e** que o preço atual seja o de origem aprovado. Qualquer outro
+  valor é preservado, não sobrescrito.
+- Ative apenas na execução em que o reajuste for intencional e **remova logo
+  depois**. Mantê-la ligada faz o próximo `db:seed` de qualquer pessoa mexer no
+  que o cliente paga.
+
+Aplicado no ambiente local em 04/08/2026 (standard: 59/590 → 29/290). Em
+produção, quando for o caso, rodar como sessão isolada — no PowerShell:
+
+```powershell
+$env:APPLY_APPROVED_PLAN_PRICE_CHANGE="true"
+npm run db:seed
+Remove-Item Env:APPLY_APPROVED_PLAN_PRICE_CHANGE
+```
+
 ---
 
 ## Callbacks de autenticação
