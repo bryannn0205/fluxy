@@ -1,0 +1,99 @@
+name: Preparar banco de produção
+
+# SOMENTE manual. Nunca em push, pull_request ou schedule: aplicar migration em
+# produção é uma decisão, não efeito colateral de um merge.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: 'Digite "aplicar" para confirmar'
+        required: true
+        type: string
+
+# Permissão mínima: o job apenas lê o código. Não escreve no repositório, não
+# publica pacote, não toca em releases.
+permissions:
+  contents: read
+
+# Duas execuções simultâneas contra o mesmo banco poderiam intercalar migrations.
+# `cancel-in-progress: false` porque cancelar no meio de um DDL é pior que
+# esperar — a segunda execução fica na fila até a primeira terminar.
+concurrency:
+  group: production-database
+  cancel-in-progress: false
+
+jobs:
+  preparar-banco:
+    name: Aplicar migrations e seed
+    runs-on: ubuntu-latest
+    # Environment do GitHub: permite exigir aprovação manual e guardar o secret
+    # com escopo restrito a produção.
+    environment: production
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        # bash roda com `-e -o pipefail` no GitHub Actions: qualquer comando que
+        # falhe aborta o job imediatamente, sem seguir para o passo seguinte.
+        shell: bash
+
+    steps:
+      - name: Confirmar intenção
+        if: inputs.confirmacao != 'aplicar'
+        run: |
+          echo "::error::Confirmação inválida. Digite exatamente: aplicar"
+          exit 1
+
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # HUSKY=0 desliga o hook de git instalado pelo script `prepare`; em CI não
+      # há hook a instalar, e o comando só teria como efeito falhar.
+      - name: Instalar dependências
+        run: npm ci
+        env:
+          HUSKY: 0
+
+      # OBRIGATÓRIO antes do seed: `lib/generated/prisma` está no .gitignore e
+      # não vem no checkout, mas o seed importa o client de lá.
+      #
+      # Recebe DATABASE_URL mesmo sem consultar o banco: `prisma.config.ts` usa
+      # env("DATABASE_URL"), que resolve na CARGA da configuração — sem a
+      # variável, o comando falha com PrismaConfigEnvError antes de começar.
+      - name: Gerar Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      # `migrate deploy` aplica apenas o que falta, em ordem, e nunca cria banco
+      # sombra nem apaga dados. Não usar migrate dev, migrate reset ou db push
+      # aqui: os três podem destruir o banco de produção.
+      - name: Aplicar migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      # NODE_ENV=production é o que impede a criação da empresa e do usuário de
+      # demonstração — o seed tem essa guarda, e sem a variável ela não vale.
+      # Seria uma conta com senha pública em produção.
+      #
+      # APPLY_APPROVED_PLAN_PRICE_CHANGE está deliberadamente AUSENTE: sem ela o
+      # seed não altera preço de plano existente. Num banco vazio isso é
+      # irrelevante (tudo entra pelo `create`), mas a ausência precisa continuar
+      # valendo nas execuções seguintes.
+      - name: Criar planos iniciais
+        run: npm run db:seed
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          NODE_ENV: production
+
+      - name: Conferir migrations
+        run: npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
