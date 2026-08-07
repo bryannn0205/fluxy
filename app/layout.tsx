@@ -1,18 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "@/app/providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Auto-hospedada pelo Next no build — nenhuma requisição a fonts.googleapis.com
+// em tempo de execução, o que mantém `font-src 'self'` da CSP intacto.
+//
+// O nome da variável precisa casar com o que `@theme` referencia em
+// globals.css. Já esteve fora de sincronia: o tema apontava para `--font-sans`,
+// que ninguém definia, e o app inteiro renderizava em Times New Roman.
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -31,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <a

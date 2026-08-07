@@ -114,3 +114,19 @@ export function isOverdue(
   if (!expectedDeliveryDate) return false;
   return expectedDeliveryDate < overdueCutoff(now);
 }
+
+const MS_POR_DIA = 24 * 60 * 60 * 1000;
+
+/**
+ * Dias inteiros que faltam até a data, nunca negativo.
+ *
+ * Arredonda para CIMA: faltando 30 horas, restam 2 dias, não 1. Quem lê "resta
+ * 1 dia" com 30 horas pela frente se sente enganado quando o dia seguinte
+ * amanhece e o acesso continua — e a conta serve para avisar, não para
+ * cronometrar. Já vencido devolve `0`, e a tela diz "encerrado" em vez de
+ * mostrar um número negativo.
+ */
+export function daysRemainingUntil(target: Date, now: Date = new Date()): number {
+  const restante = target.getTime() - now.getTime();
+  return restante <= 0 ? 0 : Math.ceil(restante / MS_POR_DIA);
+}
