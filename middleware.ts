@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 
 import { authConfig } from "@/lib/auth.config";
-import { EXPIRED_SESSION_PARAM, EXPIRED_SESSION_VALUE } from "@/lib/constants";
+import { decideNavigation, temMarcaDeSessaoExpirada } from "@/lib/navigation";
 
 // Usa a config edge-safe (sem Prisma/adapter/argon2) — o middleware roda em
 // Edge Runtime, que não suporta APIs de Node.js nem binários nativos.
@@ -10,38 +10,19 @@ import { EXPIRED_SESSION_PARAM, EXPIRED_SESSION_VALUE } from "@/lib/constants";
 // completa (lib/auth.ts) fica para Server Components e API routes.
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_ROUTES = [
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-  "/verify-email",
-];
-
+// A REGRA vive em lib/navigation.ts, pura e testada. O que sobra aqui é o
+// acoplamento com o runtime: ler o JWT, montar a URL absoluta, responder.
+// Separado assim, a decisão pode ser exercitada em todas as combinações sem
+// subir um servidor de Edge.
 export default auth((request) => {
-  const isLoggedIn = !!request.auth;
-  const { pathname } = request.nextUrl;
+  const decisao = decideNavigation({
+    pathname: request.nextUrl.pathname,
+    isLoggedIn: !!request.auth,
+    hasExpiredSessionMark: temMarcaDeSessaoExpirada(request.nextUrl.searchParams),
+  });
 
-  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
-  const isDashboardRoute = pathname.startsWith("/dashboard");
-
-  if (isDashboardRoute && !isLoggedIn) {
-    const loginUrl = new URL("/login", request.nextUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // O middleware roda no Edge e só consegue conferir se existe um JWT válido —
-  // não tem como saber se ele ainda corresponde a um usuário ativo (isso exige
-  // banco, e requireCompany() faz essa checagem). Quando requireCompany()
-  // detecta uma sessão órfã, ele manda para o login com esta marca; sem a
-  // exceção abaixo, o `isLoggedIn` ainda seria true e a pessoa voltaria para o
-  // dashboard num laço infinito.
-  const isExpiredSessionRedirect =
-    request.nextUrl.searchParams.get(EXPIRED_SESSION_PARAM) === EXPIRED_SESSION_VALUE;
-
-  if (isPublicRoute && isLoggedIn && !isExpiredSessionRedirect) {
-    return NextResponse.redirect(new URL("/dashboard", request.nextUrl.origin));
+  if (decisao.tipo === "redirecionar") {
+    return NextResponse.redirect(new URL(decisao.destino, request.nextUrl.origin));
   }
 
   const response = NextResponse.next();
@@ -49,6 +30,10 @@ export default auth((request) => {
   return response;
 });
 
+// `/` e `/plans` ficam FORA de propósito: sem entrada no matcher, o middleware
+// nem roda para elas, e são públicas por ausência de regra. Incluí-las faria a
+// regra "rota pública + sessão → dashboard" impedir um usuário autenticado de
+// abrir a landing ou a página de planos. Ver lib/navigation.ts.
 export const config = {
   matcher: [
     "/dashboard/:path*",
@@ -56,5 +41,6 @@ export const config = {
     "/register",
     "/forgot-password",
     "/reset-password",
+    "/verify-email",
   ],
 };

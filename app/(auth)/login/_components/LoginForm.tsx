@@ -18,9 +18,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { loginSchema, type LoginInput } from "@/schemas/auth.schema";
+import type { PlanIntent } from "@/lib/plan-intent";
 import { loginAction } from "@/app/(auth)/login/actions";
 
-export function LoginForm() {
+interface LoginFormProps {
+  /** Validada no servidor pela página; revalidada de novo pela action. */
+  intent: PlanIntent | null;
+}
+
+export function LoginForm({ intent }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LoginInput>({
@@ -31,7 +37,10 @@ export function LoginForm() {
   async function onSubmit(values: LoginInput) {
     setIsSubmitting(true);
 
-    const result = await loginAction(values);
+    const result = await loginAction(
+      values,
+      intent ? { plan: intent.plan, billing: intent.billing } : undefined,
+    );
 
     if (result.error) {
       toast.error(result.error);

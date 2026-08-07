@@ -16,6 +16,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/constants";
+import { FluxyLogo } from "@/components/common/FluxyLogo";
 
 interface NavItem {
   href: string;
@@ -61,7 +62,7 @@ export function NavContent() {
 
   return (
     <nav aria-label="Navegação principal" className="flex flex-col gap-4 p-4">
-      <span className="px-2 text-lg font-semibold tracking-tight">Fluxy</span>
+      <FluxyLogo className="px-2" />
       {NAV_SECTIONS.map((section, index) => (
         <div key={section.label ?? `section-${index}`} className="flex flex-col gap-1">
           {section.label && (

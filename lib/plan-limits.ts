@@ -35,8 +35,15 @@ export const PLAN_RESOURCES = {
 
 export type PlanResource = keyof typeof PLAN_RESOURCES;
 
-/** Para onde mandar quem bateu no teto. */
-export const UPGRADE_PATH = ROUTES.SETTINGS;
+/**
+ * Para onde mandar quem bateu no teto.
+ *
+ * Aponta para a tela de plano e cobrança, não para Configurações em geral:
+ * quem viu "limite de 5 usuários atingido" precisa cair onde os planos são
+ * comparados, não numa página de perfil e dados da empresa. Enquanto essa
+ * tela não existia, este caminho levava a um lugar sem nada sobre plano.
+ */
+export const UPGRADE_PATH = ROUTES.BILLING;
 
 /**
  * Lê o teto do recurso no plano.

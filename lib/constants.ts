@@ -7,6 +7,7 @@ import type {
   PaymentType,
   Role,
   StockMovementReason,
+  SubscriptionStatus,
 } from "@/lib/generated/prisma/client";
 
 export const PAGINATION = {
@@ -41,7 +42,30 @@ export const EXPORT_BATCH_SIZE = 500;
 // Slug do plano padrão criado no seed — ver prisma/seed.ts.
 export const DEFAULT_PLAN_SLUG = "standard";
 
+// Planos comercializáveis, NA ORDEM em que aparecem publicamente.
+//
+// É esta lista, e não uma coluna do banco, que decide o que é público: um
+// plano criado à mão no banco não passa a ser vendido por existir. A ordem
+// também vem daqui — não é alfabética nem por preço, é posicionamento
+// comercial, e mudá-lo precisa ser a edição de uma linha só.
+//
+// Ver PlanRepository.listPublic(), que percorre esta lista para montar o
+// resultado: o que não está aqui não pode sair de lá.
+export const PUBLIC_PLAN_SLUGS = [DEFAULT_PLAN_SLUG, "pro"] as const;
+
+export type PublicPlanSlug = (typeof PUBLIC_PLAN_SLUGS)[number];
+
+// Periodicidades de cobrança. Fica aqui, junto dos slugs públicos, porque é a
+// outra metade da mesma pergunta comercial — "qual plano, cobrado como?" — e
+// as duas são consumidas pelos mesmos lugares: intenção, página de planos e
+// tela de cobrança. Ver lib/plan-intent.ts.
+export const BILLING_INTERVALS = ["monthly", "yearly"] as const;
+
+export type BillingInterval = (typeof BILLING_INTERVALS)[number];
+
 export const ROUTES = {
+  HOME: "/",
+  PLANS: "/plans",
   LOGIN: "/login",
   REGISTER: "/register",
   FORGOT_PASSWORD: "/forgot-password",
@@ -84,6 +108,17 @@ export const PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
 export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   PAYMENT: "Recebimento",
   REFUND: "Estorno",
+};
+
+// Tipado contra o enum, e não Record<string, string>: um estado novo em
+// SubscriptionStatus vira erro de compilação aqui, em vez de aparecer cru na
+// tela. Estava duplicado e destipado dentro de Configurações.
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  TRIALING: "Período de teste",
+  ACTIVE: "Ativa",
+  PAST_DUE: "Pagamento pendente",
+  CANCELED: "Cancelada",
+  EXPIRED: "Expirada",
 };
 
 export const ROLE_LABELS: Record<Role, string> = {

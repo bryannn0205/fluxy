@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   DollarSign,
+  Info,
   PackageCheck,
   PackageSearch,
   ShoppingCart,
@@ -14,14 +15,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/EmptyState";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatCurrency, formatDate, formatOrderNumber } from "@/lib/formatters";
-import { ROUTES } from "@/lib/constants";
+import { DEFAULT_PLAN_SLUG, ROUTES } from "@/lib/constants";
+import { parsePlanIntent } from "@/lib/plan-intent";
 import { requireCompany } from "@/lib/session";
 import { orderService, productService } from "@/services";
 
 export const metadata: Metadata = { title: "Painel" };
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  // A autorização vem daqui e SÓ daqui: sessão, empresa e papel. A query
+  // string abaixo não participa desta linha nem de nenhuma decisão de acesso.
   const { companyId } = await requireCompany();
+
+  // Usada exclusivamente para uma mensagem. Revalidada mesmo tendo sido
+  // gerada por `buildPostAuthUrl` no passo anterior — a URL é do usuário, e
+  // ele pode digitar `?plan=pro` sem nunca ter passado por /plans. Fazer isso
+  // não muda nada: o plano real da empresa está no banco, e esta variável não
+  // toca em plano, limite nem assinatura.
+  const params = await searchParams;
+  const planIntent = parsePlanIntent({
+    plan: params.plan,
+    billing: params.billing,
+  });
+  const mostrarAvisoDoPro = planIntent !== null && planIntent.plan !== DEFAULT_PLAN_SLUG;
 
   const [stats, recentOrders, lowStockProducts] = await Promise.all([
     orderService.getStats(companyId),
@@ -32,6 +52,22 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Painel</h1>
+
+      {mostrarAvisoDoPro && (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm"
+        >
+          <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+          <p>
+            <span className="font-medium">Plano Pro selecionado.</span>{" "}
+            <span className="text-muted-foreground">
+              A cobrança será disponibilizada em breve. Até lá, sua empresa continua no
+              teste grátis com os limites do Standard.
+            </span>
+          </p>
+        </div>
+      )}
 
       {stats.overdueCount > 0 && (
         <Link

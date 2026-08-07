@@ -17,9 +17,21 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { registerSchema, type RegisterInput } from "@/schemas/auth.schema";
+import type { PlanIntent } from "@/lib/plan-intent";
 import { registerAction } from "@/app/(auth)/register/actions";
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  /** Validada no servidor pela página; revalidada de novo pela action. */
+  intent: PlanIntent | null;
+}
+
+/**
+ * A intenção viaja como argumento separado da action, não como campo do
+ * formulário. Não há `<input type="hidden">` de plano: o formulário já entrega
+ * um objeto ao Server Action, e misturar a intenção nele a colocaria dentro de
+ * `RegisterInput` — exatamente o tipo que não pode conhecê-la.
+ */
+export function RegisterForm({ intent }: RegisterFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<RegisterInput>({
@@ -32,7 +44,10 @@ export function RegisterForm() {
   async function onSubmit(values: RegisterInput) {
     setIsSubmitting(true);
 
-    const result = await registerAction(values);
+    const result = await registerAction(
+      values,
+      intent ? { plan: intent.plan, billing: intent.billing } : undefined,
+    );
 
     if (result?.error) {
       if (result.fields) {

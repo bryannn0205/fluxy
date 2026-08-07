@@ -24,6 +24,7 @@ import { ReportService } from "@/services/ReportService";
 import { NotificationService } from "@/services/NotificationService";
 import { FinanceService } from "@/services/FinanceService";
 import { PlanLimitService } from "@/services/PlanLimitService";
+import { PlanCatalogService } from "@/services/PlanCatalogService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -44,6 +45,10 @@ const paymentRepository = new PrismaPaymentRepository(prisma);
 
 export const auditService = new AuditService(prisma);
 export const subscriptionGateService = new SubscriptionGateService();
+
+// Catálogo público: sem dependência de sessão, empresa ou auditoria — é o
+// único service que responde a quem não está autenticado.
+export const planCatalogService = new PlanCatalogService(planRepository);
 
 // Instanciado antes dos services de negócio: todos que criam registro
 // dependem dele para conferir a cota do plano.

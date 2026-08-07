@@ -41,6 +41,26 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
+/**
+ * Formata um preço que chegou como string decimal — `"29.00"` → `"R$ 29"`,
+ * `"1290.50"` → `"R$ 1.290,50"`.
+ *
+ * Existe separada de `formatCurrency` porque o DTO público de planos entrega
+ * string, não número (ver types/plans.ts), e converter para `Number` só para
+ * imprimir reintroduziria ponto flutuante no caminho do dinheiro. Aqui não há
+ * conversão nenhuma: a parte inteira ganha separador de milhar por
+ * manipulação de texto, e os centavos vêm como vieram.
+ *
+ * Centavos zerados são omitidos: "R$ 29" lê melhor numa tabela de preços que
+ * "R$ 29,00", e nenhuma informação se perde.
+ */
+export function formatPriceFromDecimalString(value: string): string {
+  const [inteiro = "0", centavos = "00"] = value.split(".");
+  const comSeparador = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+  return centavos === "00" ? `R$ ${comSeparador}` : `R$ ${comSeparador},${centavos}`;
+}
+
 // Números de pedido são sempre exibidos com 4 dígitos preenchidos (ex.: 0007).
 export function formatOrderNumber(orderNumber: string): string {
   return `#${orderNumber}`;

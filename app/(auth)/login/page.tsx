@@ -1,12 +1,17 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Info } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { PlanIntentNotice } from "@/components/common/PlanIntentNotice";
 import { env } from "@/lib/env";
 import { EXPIRED_SESSION_PARAM, EXPIRED_SESSION_VALUE } from "@/lib/constants";
+import { buildRegisterUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { LoginForm } from "@/app/(auth)/login/_components/LoginForm";
 import { GoogleSignInButton } from "@/app/(auth)/login/_components/GoogleSignInButton";
+
+export const metadata: Metadata = { title: "Entrar" };
 
 interface LoginPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -17,10 +22,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const googleEnabled = Boolean(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET);
   const sessionExpired = params[EXPIRED_SESSION_PARAM] === EXPIRED_SESSION_VALUE;
 
+  // Revalidada, como em /register: a página anterior não é fonte confiável.
+  const intent = parsePlanIntent({ plan: params.plan, billing: params.billing });
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Entrar</CardTitle>
+        <h1 className="font-heading text-xl leading-snug font-semibold tracking-tight">
+          Entrar
+        </h1>
       </CardHeader>
       <CardContent className="space-y-4">
         {sessionExpired && (
@@ -33,7 +43,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         )}
 
-        <LoginForm />
+        <PlanIntentNotice intent={intent} />
+
+        <LoginForm intent={intent} />
 
         {googleEnabled && (
           <>
@@ -49,7 +61,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <p className="text-center text-sm text-muted-foreground">
           Ainda não tem conta?{" "}
           <Link
-            href="/register"
+            href={buildRegisterUrl(intent)}
             className="font-medium text-foreground underline underline-offset-4"
           >
             Criar conta grátis
