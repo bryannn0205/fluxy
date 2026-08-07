@@ -19,6 +19,9 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
+// A comparação é por SUBSTRING (ver isSensitiveKey), então "token" cobre
+// "access_token" e "cpf" cobre "cpfCnpj". Acrescentar é barato; esquecer sai
+// caro uma vez só.
 const SENSITIVE_KEYS = [
   "password",
   "senha",
@@ -31,6 +34,16 @@ const SENSITIVE_KEYS = [
   "cpf",
   "cnpj",
   "passwordhash",
+
+  // Campos do payload de webhook do provedor de pagamento. O evento
+  // `payment.success` traz `payer` com documento e dados bancários do pagador
+  // — informação de terceiro, que o Fluxy não guarda e muito menos deve
+  // registrar em log. `taxid` é o nome que a ValidaPay usa para o documento,
+  // e por isso não era alcançado por "cpf"/"cnpj".
+  "taxid",
+  "account",
+  "bank",
+  "branch",
 ];
 
 const minLevel: LogLevel = env.NODE_ENV === "production" ? "info" : "debug";

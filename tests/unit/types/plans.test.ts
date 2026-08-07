@@ -27,6 +27,8 @@ function planoDeTeste(sobrescritas: Partial<Plan> = {}): Plan {
     maxOrdersPerMonth: 500,
     maxProducts: 500,
     maxCustomers: 2000,
+    validapayPriceMonthlyId: null,
+    validapayPriceYearlyId: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-06-01T00:00:00Z"),
     ...sobrescritas,

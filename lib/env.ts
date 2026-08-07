@@ -31,6 +31,19 @@ const envSchema = z.object({
   ASAAS_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
   ASAAS_WEBHOOK_TOKEN: z.string().optional(),
 
+  // ValidaPay — opcional; sem as credenciais, o pagamento fica indisponível e
+  // o resto do produto continua funcionando, como no R2 e no Asaas.
+  //
+  // `production` precisa ser escolhido explicitamente: o padrão sandbox faz o
+  // esquecimento errar para o lado seguro. As URLs NÃO são configuráveis —
+  // derivam desta chave em lib/validapay/config.ts.
+  //
+  // Nenhuma leva prefixo NEXT_PUBLIC_: são credenciais de servidor.
+  VALIDAPAY_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  VALIDAPAY_CLIENT_ID: z.string().optional(),
+  VALIDAPAY_CLIENT_SECRET: z.string().optional(),
+  VALIDAPAY_SCOPE: z.string().optional(),
+
   // E-mail transacional — opcional; sem ele, e-mails são apenas logados.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Fluxy <naoresponda@fluxy.com.br>"),
