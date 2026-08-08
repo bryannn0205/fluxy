@@ -1,10 +1,12 @@
 # Estado da integração ValidaPay — documento de continuidade
 
-**Atualizado em:** 07/08/2026
+**Atualizado em:** 08/08/2026
 **Propósito:** permitir retomar o trabalho numa conversa nova, sem depender do histórico anterior.
 
-> **Onde paramos:** P1 concluída (PostgreSQL local auditado e autenticação validada).
-> **P2 e P3 ainda NÃO foram executados.** Ver seção 10.
+> **Onde paramos:** P1, P2 e P3 concluídas. Os dados do `prisma dev` estão
+> exportados, conferidos e com cópia cifrada fora do repositório.
+> **P4/P5 ainda NÃO foram executados** — nenhum banco novo existe.
+> Ver seções 10, 11 e 12.
 
 ---
 
@@ -14,9 +16,13 @@
 | --------------- | -------------------------------------------------------------------- |
 | Branch atual    | `master`                                                             |
 | Working tree    | limpa                                                                |
-| HEAD            | `ae3d088c9be052652cfb5fcc8de2e19ab62509e3`                           |
+| HEAD            | `b0ccfac` — `docs: add ValidaPay integration status`                 |
+| Merge do PR #4  | `ae3d088`                                                            |
 | Commit de F1+F2 | `ed8ae9e` — `feat: add ValidaPay client and payment provider schema` |
 | PR #4           | **mesclado** em `master` (`ae3d088`)                                 |
+
+Nenhum commit foi feito durante P2/P3 — o trabalho de migração não tocou em
+código. Os scripts de exportação vivem **fora do repositório**.
 
 **Vercel:** projeto principal `fluxy` está **Ready**. Existe um projeto duplicado `fluxy-fdnx` com **Error** — **fora do escopo, não mexer, não copiar secrets para ele**.
 
@@ -188,6 +194,12 @@ O daemon do `prisma dev` caiu **nove vezes** numa única sessão, sempre com `Se
 
 **Sair do `prisma dev` e migrar o desenvolvimento para o PostgreSQL 18 local normal.** Limpar o arquivo periodicamente seria apenas paliativo.
 
+**Atualização 08/08:** houve uma **décima** queda, durante o `pg_dump` de P3 — ver
+seção 11. Depois dela o daemon foi iniciado mais duas vezes e sobreviveu às duas
+janelas de exportação. O `durable-streams.sqlite` está preservado e **não cresce
+com o servidor parado**: 5.427,7 MB (07/08) → 5.429,8 MB (08/08), os 2,08 MB
+somados apenas durante as janelas.
+
 ---
 
 ## 7. PostgreSQL local
@@ -249,48 +261,228 @@ Princípios:
 
 ---
 
-## 10. Ponto exato onde paramos
+## 10. P2 — inventário do banco antigo (CONCLUÍDO)
 
-> ## ⚠️ P2 e P3 AINDA NÃO FORAM EXECUTADOS.
+**Servidor de origem:** `prisma dev default`, Postgres cru em `localhost:51218`,
+database **`template1`** — o único com dados (32 MB, contra 7 MB de `postgres` e
+`template0`). O proxy HTTP em 51217 **não** foi usado: leitura direta na porta do
+Postgres tem menos peças no caminho.
 
-**P1 concluída:** PostgreSQL local auditado, `pgpass.conf` corrigido, autenticação validada.
+**Versão do servidor antigo:**
 
-### Próximos passos, em ordem
+```
+PostgreSQL 17.5 on wasm32-unknown-linux-gnu,
+compiled by emcc (Emscripten) 3.1.74, 32-bit
+```
 
-**P2 — inventariar o banco atual do `prisma dev`**
+Build WASM/Emscripten de 32 bits. Isso encerra a hipótese de anexar
+`Data\default\.pglite` a um PostgreSQL 18 nativo: além do `PG_VERSION 17`, o
+diretório foi escrito por um build que não é o nativo.
 
-`DATABASE_URL` atual aponta para o servidor `default` do `prisma dev`, porta **51218**, banco `template1` (redigido: `postgresql://***:***@localhost:51218/template1`).
+**Migrations:** 10 linhas em `_prisma_migrations` — **9 aplicadas com sucesso** e
+**1 marcada como rolled back**: `29990101000000_probe_tx`, resquício da prova
+registrada na seção 4 de que o Prisma não envolve migrations em transação. Ela
+**não existe** em `prisma/migrations/` e **não deve viajar** para o banco novo.
 
-Registrar contagens que servirão de base para a prova de equivalência:
-migrations aplicadas, empresas, usuários, planos, pedidos, pagamentos, produtos, clientes, `SubscriptionCheckout`, `PaymentProviderEvent`.
+### Contagens finais — 18 tabelas
 
-**P3 — backup**
+| #   | Tabela              | Linhas | #   | Tabela                 | Linhas |
+| --- | ------------------- | -----: | --- | ---------------------- | -----: |
+| 1   | `Plan`              |      2 | 10  | `Order`                |     16 |
+| 2   | `Company`           |     12 | 11  | `OrderItem`            |     17 |
+| 3   | `User`              |      7 | 12  | `OrderAttachment`      |      0 |
+| 4   | `Account`           |      0 | 13  | `StockMovement`        |     11 |
+| 5   | `Session`           |      0 | 14  | `AuditLog`             |      8 |
+| 6   | `VerificationToken` |    486 | 15  | `Notification`         |      0 |
+| 7   | `Invitation`        |      0 | 16  | `Payment`              |      0 |
+| 8   | `Customer`          |     10 | 17  | `SubscriptionCheckout` |      0 |
+| 9   | `Product`           |     10 | 18  | `PaymentProviderEvent` |      0 |
 
-`pg_dump` do banco atual para `C:\Users\Bryan\Backups\Fluxy\`, com timestamp no nome
-(ex.: `fluxy-dev-before-postgres-migration-YYYYMMDD-HHMM.dump`).
-**Fora do repositório. Não commitar.**
-Validar o dump com `pg_restore --list`.
+**Total: 579 linhas.** Oito tabelas vazias.
 
-**Somente após backup válido:**
+Três leituras que importam para a migração:
 
-- `npx prisma dev stop default`
-- **NÃO** `prisma dev rm`
-
-**Depois:**
-
-1. Criar `fluxy_dev` (e `fluxy_shadow`).
-2. Preparar role dedicada `fluxy` (senha definida pelo usuário).
-3. `prisma migrate deploy` no banco novo · `prisma generate`.
-4. Transferir os dados preservando IDs, relações, timestamps, enums, FKs e valores monetários exatos.
-5. Provar equivalência (contagens + integridade: Company→Plan, User→Company, Order→Company, Payment→Order, isolamento por tenant, preços dos planos).
-6. **Só então** alterar `DATABASE_URL` no `.env` local.
-7. Validar sem `prisma dev`: `prisma generate`, `migrate status`, `tsc`, `eslint`, `vitest run` (esperado 589/589), `next build`.
-
-**Não apagar o ambiente antigo** mesmo após tudo funcionar.
+- `Session` e `Account` vazias **confirmam no dado** o que o schema dizia: sessão
+  é JWT e não há vínculo OAuth em uso.
+- `VerificationToken` (486) é a maior tabela e responde por ~70% dos bytes
+  exportados.
+- `AuditLog` tem 8 linhas — três ordens de grandeza abaixo do limite que exigiria
+  paginação por keyset.
 
 ---
 
-## 11. Proibições vigentes
+## 11. P3 — backup
+
+### 11.1 `pg_dump` nativo: FALHOU
+
+`pg_dump` 18.4 contra o servidor 17.5, formato custom (`-Fc`). Rodou 4 segundos e
+morreu na **primeira tabela de dados**:
+
+```
+pg_dump: error: consulta falhou: o servidor fechou a conexão de forma não esperada
+pg_dump: detail: Query was: COPY public."Account" (...) TO stdout;
+```
+
+O daemon **não sobreviveu** — o `prisma dev stop` seguinte respondeu
+`No prisma dev servers found to stop`.
+
+> **O arquivo gerado NÃO é backup.**
+> `fluxy-dev-before-postgres-migration-20260807-2316.dump` tem 76.840 bytes de
+> cabeçalho e TOC (197 entradas) e **zero linha de dados**. O `pg_restore --list`
+> devolve exit 0 sobre ele — o que prova apenas que o índice é legível, porque no
+> formato custom o TOC é escrito **antes** dos dados. **Preservado, jamais
+> restaurar.**
+
+Aprendizado que redesenhou o plano: a falha foi num `COPY` de tabela com no
+máximo 7 linhas. Não era volume — era o `COPY ... TO stdout` em si. Logo, o
+Plano B não podia usar COPY em ponto algum.
+
+O TOC também revelou que um dump de `template1` arrastaria o schema interno
+`_prisma_dev_wal` junto com o `public`.
+
+### 11.2 Plano B: exportação JSONL — CONCLUÍDO
+
+`SELECT` com `row_to_json`, **sem COPY**, uma tabela por vez, duas conexões
+curtas por tabela (`count(*)` e export), arquivo escrito pelo próprio `psql`
+(`-o`) com `PGCLIENTENCODING=UTF8`.
+
+Decisões de fidelidade:
+
+- as **13 colunas `DECIMAL(10,2)`** saem com `::text` → string JSON, nunca número;
+- as **40 colunas `TIMESTAMP(3)`** saem com
+  `to_char(col, 'YYYY-MM-DD"T"HH24:MI:SS.MS')` — não depende de `DateStyle`, não
+  inventa fuso, não converte para UTC;
+- `ORDER BY … COLLATE "C"` torna a ordem — e o SHA-256 — independentes do
+  collation do banco;
+- **allowlist literal de 18 tabelas**, nunca enumeração: `_prisma_migrations` e
+  `_prisma_dev_wal` ficam fora por ausência, não por exclusão.
+
+**Preflight aprovado antes de escrever qualquer byte de negócio:**
+
+| Verificação          | Resultado |
+| -------------------- | --------- |
+| Tabelas da allowlist | **18**    |
+| Colunas conferidas   | **199**   |
+| Colunas `numeric`    | **13**    |
+| Colunas `timestamp`  | **40**    |
+| Colunas `jsonb`      | **2**     |
+| Colunas `text[]`     | **1**     |
+
+Mais um autoteste de serialização com 12 asserções, executado sobre literais na
+própria instância exportada: JSONB continua objeto e array, `TEXT[]` continua
+array JSON, `NULL` continua `null`, string vazia continua `""`, quebra de linha
+fica escapada (1 linha JSON = 1 linha física), Unicode preservado, `Decimal`
+como string, timestamp determinístico com milissegundos e zero à esquerda.
+
+**Resultado: 18/18 tabelas `OK`.** `expectedRows == exportedRows` em **todas**,
+com recontagem independente na finalização offline. **18/18 SHA-256** calculados
+com o servidor já parado. Zero `FAILED`, zero `DEFERRED_LARGE`.
+
+Custo: duas janelas, ~170 s de daemon no ar, 2,08 MB de crescimento no
+`durable-streams.sqlite`.
+
+### 11.3 Artefatos do backup
+
+**Plaintext (permanece presente, por decisão explícita):**
+
+```
+C:\Users\Bryan\Backups\Fluxy\export-20260808-1207\
+```
+
+20 arquivos, 124.631 bytes: `manifest.json`, `_selftest.json` e os 18 `.jsonl`.
+
+**Cifrado:**
+
+```
+C:\Users\Bryan\Backups\Fluxy\fluxy-dev-backup-20260808-1207.rar
+```
+
+|                      |                                                                    |
+| -------------------- | ------------------------------------------------------------------ |
+| Ferramenta           | WinRAR 7.01 x64 (RAR5)                                             |
+| Algoritmo            | **AES-256**, com **headers cifrados** (`-hp`)                      |
+| Tamanho              | 38.318 bytes (37,42 KB)                                            |
+| SHA-256              | `587b25cac18a9377db1c788829df3ebc14cb5f31d03780843ea4b4b9fe31db61` |
+| Teste de integridade | **All OK** (executado manualmente pelo usuário)                    |
+
+A senha foi digitada pelo usuário no próprio terminal. **Não está neste
+documento, em script, em log, no manifest nem no repositório.** 7-Zip não está
+instalado nesta máquina — os `7z.exe` encontrados são cópias embutidas no pacote
+de drivers da AMD, e por isso WinRAR foi a escolha.
+
+**Ferramentas da exportação** (fora do repositório, no scratchpad da sessão):
+`tables.ps1` (allowlist e classificação de colunas), `Build-ExportSql.ps1`,
+`Export-Fluxy.ps1`, `Finalize-Export.ps1` e 40 arquivos `.sql` gerados.
+
+### 11.4 Estado do ambiente após P3
+
+|                          |                                     |
+| ------------------------ | ----------------------------------- |
+| `prisma dev default`     | **`not_running`**                   |
+| `prisma dev fluxy`       | **`not_running`**                   |
+| `Data\default\.pglite`   | preservado (78,5 MB)                |
+| `durable-streams.sqlite` | preservado (5.429,8 MB)             |
+| Dump parcial de 07/08    | preservado (inservível)             |
+| `gestao_pedidos`         | **intocado** — segue fora de escopo |
+| Working tree             | limpa                               |
+| F3                       | **não iniciada**                    |
+
+---
+
+## 12. Ponto exato onde paramos
+
+> ## ⚠️ P4 e P5 AINDA NÃO FORAM EXECUTADOS.
+>
+> Nenhum banco novo existe. Nenhum dado foi importado. `.env` não foi alterado.
+
+**Concluídas:** P1 (PostgreSQL local auditado, `pgpass.conf` corrigido,
+autenticação validada) · P2 (inventário) · P3 (backup completo, validado e
+cifrado).
+
+### Próxima etapa — P4/P5
+
+1. Criar a **role dedicada `fluxy`** — a senha é definida pelo usuário; o agente
+   não cria nem digita senhas.
+2. Criar **`fluxy_dev`**.
+3. Criar **`fluxy_shadow`** — banco separado, **nunca** o mesmo de
+   desenvolvimento.
+4. Aplicar as migrations com **`prisma migrate deploy`** (nunca `db push`, nunca
+   `migrate reset`).
+5. **`prisma generate`**.
+6. **PARAR.** Não importar dado nenhum até o importador ser revisado.
+
+A role `postgres` continua sendo usada só para administração/migração, nunca como
+credencial permanente da aplicação.
+
+### Depois do importador revisado
+
+7. Importar os 18 JSONL na **ordem topológica de FK**:
+   `Plan → Company → User → Account → Session → VerificationToken → Invitation →
+Customer → Product → Order → OrderItem → OrderAttachment → StockMovement →
+AuditLog → Notification → Payment → SubscriptionCheckout → PaymentProviderEvent`
+8. Provar equivalência: contagens por tabela contra a seção 10, mais integridade
+   referencial (Company→Plan, User→Company, Order→Company, Payment→Order,
+   isolamento por tenant, preços dos planos).
+9. **Só então** alterar `DATABASE_URL` no `.env` local.
+10. Validar sem `prisma dev`: `prisma generate`, `migrate status`, `tsc`,
+    `eslint`, `vitest run` (esperado 589/589), `next build`.
+
+Pontos já resolvidos que o importador pode assumir:
+
+- **Não há sequences.** Zero `SERIAL`, `IDENTITY` ou `CREATE SEQUENCE` nas 9
+  migrations: todo `id` é `cuid()` gerado no cliente, então os IDs sobrevivem por
+  construção e nada precisa ser ressincronizado.
+- **`_prisma_migrations` não foi exportada.** Quem a preenche no banco novo é o
+  `migrate deploy` — e é assim que a linha `probe_tx` fica para trás.
+- **Não há `BYTEA`** e não há `TIMESTAMPTZ`: nenhum problema de binário ou fuso.
+
+**Não apagar o ambiente antigo** mesmo após tudo funcionar. A exclusão do
+plaintext de backup é decisão posterior, só depois de `fluxy_dev` migrado e
+validado.
+
+---
+
+## 13. Proibições vigentes
 
 - ❌ Não iniciar **F3**
 - ❌ Não criar produtos/preços na ValidaPay
@@ -299,6 +491,10 @@ Validar o dump com `pg_restore --list`.
 - ❌ Não apagar `durable-streams.sqlite`
 - ❌ Não executar `prisma dev rm`
 - ❌ Não tocar em `gestao_pedidos`
+- ❌ Não restaurar — nem confiar em — o dump parcial de 07/08
+- ❌ Não apagar os backups: nem `export-20260808-1207\`, nem o `.rar`
+- ❌ Não gravar senha em script, log, manifest ou neste documento
+- ❌ Não importar dados antes de o importador ser revisado
 - ❌ Não tocar em produção (banco, Vercel, ValidaPay)
 - ❌ Não alterar migrations antigas
 - ❌ Não usar `db push`
@@ -309,23 +505,28 @@ Validar o dump com `pg_restore --list`.
 
 ---
 
-## 12. Prompt de retomada
+## 14. Prompt de retomada
 
 Cole o texto abaixo numa conversa nova:
 
 ```
 Leia docs/STATUS-VALIDAPAY.md no repositório Fluxy e retome exatamente
-do ponto registrado na seção 10.
+do ponto registrado na seção 12.
 
 Estamos migrando o ambiente de desenvolvimento do `prisma dev` para o
-PostgreSQL 18 local normal. P1 está concluída (PostgreSQL auditado,
-pgpass.conf corrigido, autenticação validada).
+PostgreSQL 18 local normal. P1, P2 e P3 estão concluídas: o banco antigo
+foi inventariado (579 linhas em 18 tabelas) e os dados estão exportados
+em JSONL, validados (18/18 OK, 18/18 SHA-256) e com cópia cifrada.
 
-Execute P2 (inventário do banco atual do prisma dev, com as contagens
-listadas na seção 10) e depois PARE para eu aprovar antes do P3 (backup
-com pg_dump).
+Próxima etapa é P4/P5: criar a role dedicada `fluxy` (senha definida por
+mim), criar `fluxy_dev` e `fluxy_shadow`, aplicar `prisma migrate deploy`
+e rodar `prisma generate`. PARE antes de importar qualquer dado — quero
+revisar o importador primeiro.
 
-Respeite integralmente as proibições da seção 11. Não inicie F3.
+O `prisma dev` está parado e NÃO deve ser reiniciado sem me explicar
+antes por quê, o que será feito e quando será parado de novo.
+
+Respeite integralmente as proibições da seção 13. Não inicie F3.
 Não faça commit sem minha autorização.
 ```
 
