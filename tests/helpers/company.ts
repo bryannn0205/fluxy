@@ -20,8 +20,12 @@ export function buildCompany(overrides: Partial<ActingCompany> = {}): ActingComp
     planId: null,
     subscriptionStatus: "ACTIVE",
     trialEndsAt: new Date(),
+    // Os quatro nulos: Asaas e ValidaPay coexistem no schema até a produção
+    // ser verificada e as colunas antigas removerem-se em migration própria.
     asaasCustomerId: null,
     asaasSubscriptionId: null,
+    validapayCustomerId: null,
+    validapaySubscriptionId: null,
     nextOrderNumber: 1,
     createdAt: new Date(),
     updatedAt: new Date(),

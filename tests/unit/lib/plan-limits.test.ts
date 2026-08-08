@@ -15,6 +15,8 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     maxOrdersPerMonth: null,
     maxProducts: null,
     maxCustomers: null,
+    validapayPriceMonthlyId: null,
+    validapayPriceYearlyId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

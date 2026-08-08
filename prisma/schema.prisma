@@ -24,10 +24,35 @@ model Company {
   planId String?
   plan   Plan?   @relation(fields: [planId], references: [id])
 
-  subscriptionStatus  SubscriptionStatus @default(TRIALING)
-  trialEndsAt         DateTime
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  trialEndsAt        DateTime
+
+  // DÍVIDA TÉCNICA: resquício de um provedor que nunca chegou a ser integrado.
+  //
+  // Mantidas de propósito, e NÃO renomeadas. Renomear preservaria os bytes mas
+  // trocaria o significado: um identificador do Asaas passaria a se chamar
+  // ValidaPay, e ninguém perceberia. Nenhum código deste repositório jamais
+  // escreveu aqui — o que prova que o SISTEMA não preencheu, não que nenhum
+  // banco tenha valor, porque alteração manual fora do repositório não pode
+  // ser descartada.
+  //
+  // A remoção fica para migration própria, DEPOIS de verificar explicitamente
+  // o banco de produção.
   asaasCustomerId     String?
   asaasSubscriptionId String?
+
+  // Identificadores da empresa na ValidaPay.
+  //
+  // Nome EXPLÍCITO, e não `paymentProvider*`: sem uma coluna de provider ao
+  // lado, o nome genérico não permitiria interpretar de quem é o
+  // identificador — seria específico da ValidaPay escondendo isso no nome.
+  // `SubscriptionCheckout` e `PaymentProviderEvent` usam a enum porque lá o
+  // provedor é parte do dado; aqui não é, e o MVP tem um gateway só.
+  //
+  // Nascem NULL. Nada é copiado das colunas acima: o dado de um provedor não
+  // vira dado de outro por mudança de nome.
+  validapayCustomerId     String?
+  validapaySubscriptionId String?
 
   // Contador atômico para gerar o próximo número de pedido da empresa.
   nextOrderNumber Int @default(1)
@@ -35,6 +60,9 @@ model Company {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+
+  subscriptionCheckouts SubscriptionCheckout[]
+  providerEvents        PaymentProviderEvent[]
 
   users          User[]
   customers      Customer[]
@@ -82,10 +110,24 @@ model Plan {
   maxProducts       Int?
   maxCustomers      Int?
 
+  // Preços correspondentes na ValidaPay (`priceId` de POST /v1/checkout-sessions).
+  //
+  // Nullable e INDEPENDENTES: um plano pode ter só o mensal cadastrado lá, e
+  // Standard e Pro têm identificadores distintos. Ficam no banco, e não em
+  // constante no código, porque são identificadores de um sistema externo —
+  // mudam por ação de quem administra a conta, não por deploy.
+  //
+  // Nome explícito pela mesma razão das colunas de Company.
+  //
+  // A F2 apenas abre as colunas. Criar produto e preço remotos é fase própria.
+  validapayPriceMonthlyId String?
+  validapayPriceYearlyId  String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies Company[]
+  companies             Company[]
+  subscriptionCheckouts SubscriptionCheckout[]
 }
 
 enum SubscriptionStatus {
@@ -347,16 +389,16 @@ model Order {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
 
-  status   OrderStatus @default(PENDING)
-  subtotal Decimal     @db.Decimal(10, 2)
-  discount Decimal     @default(0) @db.Decimal(10, 2)
+  status      OrderStatus @default(PENDING)
+  subtotal    Decimal     @db.Decimal(10, 2)
+  discount    Decimal     @default(0) @db.Decimal(10, 2)
   // total = subtotal + deliveryFee + surcharge - discount. O cálculo vive em
   // lib/order-totals.ts e em nenhum outro lugar — nem no formulário, nem no
   // CSV, nem no relatório. Ver a nota lá sobre por que o servidor recalcula
   // sempre a partir do preço do Product, ignorando qualquer total do cliente.
-  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
-  surcharge   Decimal @default(0) @db.Decimal(10, 2)
-  total       Decimal @db.Decimal(10, 2)
+  deliveryFee Decimal     @default(0) @db.Decimal(10, 2)
+  surcharge   Decimal     @default(0) @db.Decimal(10, 2)
+  total       Decimal     @db.Decimal(10, 2)
   notes       String?
 
   // Caches do ledger de Payment, reconstruíveis somando os lançamentos —
@@ -684,4 +726,170 @@ enum OrderPaymentStatus {
   PAID
   REFUNDED
   CANCELLED
+}
+
+// ============================================================
+// Integração com provedor de pagamento
+// ============================================================
+
+// Um valor só, e é o suficiente. Existe para que as tabelas acima possam ter
+// nomes neutros com honestidade: sem esta coluna, "PaymentProviderEvent" seria
+// um nome genérico escondendo um acoplamento. Quando houver um segundo
+// provedor, ele entra aqui e nada mais precisa ser renomeado.
+enum PaymentProvider {
+  VALIDAPAY
+}
+
+// Contraparte no banco de BILLING_INTERVALS (lib/constants.ts). Enum, e não
+// texto livre, porque uma periodicidade desconhecida gravada por engano só
+// apareceria na hora de cobrar.
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+// Estado da TENTATIVA de contratação — distinto de SubscriptionStatus, que é o
+// estado da assinatura da empresa. Reutilizar aquele enum aqui faria uma
+// tentativa abandonada parecer uma assinatura cancelada.
+enum SubscriptionCheckoutStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ProviderEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  // Evento legítimo que não exige ação: tipo desconhecido, duplicado
+  // semântico, ou referente a algo que o Fluxy não acompanha. Registrado para
+  // auditoria, nunca reprocessado.
+  IGNORED
+}
+
+/// Tentativa de contratação, registrada ANTES do redirecionamento ao checkout.
+///
+/// Existe para uma coisa: dar ao Fluxy um registro PRÓPRIO com que correlacionar
+/// o webhook que chegará depois. Sem ele, a correlação dependeria de campo do
+/// payload — isto é, de dado que vem de fora — e um payload forjado poderia
+/// apontar para a empresa que quisesse.
+///
+/// **`intendedPlanId` é intenção, não plano efetivo.** Criar uma tentativa não
+/// altera `Company.planId` nem `Company.subscriptionStatus`; nada nesta tabela
+/// concede acesso. O plano vigente continua sendo o de `Company`, e só muda
+/// depois de pagamento confirmado.
+model SubscriptionCheckout {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// Plano PRETENDIDO. Restrict: um plano com tentativa registrada não some do
+  /// catálogo sem que alguém decida o que fazer com o histórico.
+  intendedPlanId String
+  intendedPlan   Plan   @relation(fields: [intendedPlanId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  billingInterval BillingInterval
+  provider        PaymentProvider
+
+  /// Identificadores devolvidos pelo provedor ao abrir o checkout. Nullable
+  /// porque a linha nasce ANTES da chamada externa — é justamente o registro
+  /// que sobrevive caso a chamada falhe.
+  externalSessionId String?
+  externalChargeId  String?
+
+  status SubscriptionCheckoutStatus @default(PENDING)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  /// Únicos POR PROVEDOR, não globalmente.
+  ///
+  /// Dois registros do Fluxy apontando para a mesma sessão tornariam a
+  /// correlação ambígua justamente na hora de conceder o plano — daí o único.
+  /// Mas o identificador é de um sistema de terceiro: nada documentado garante
+  /// que ele não colida com o de outro provedor, e assumir unicidade global de
+  /// um formato que não controlamos criaria uma falha de inserção inexplicável
+  /// no dia em que houvesse um segundo gateway. `provider` faz parte do dado
+  /// aqui, então faz parte da chave.
+  @@unique([provider, externalSessionId])
+  @@unique([provider, externalChargeId])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([companyId, status])
+}
+
+/// Eventos recebidos do provedor. **Append-only**, como StockMovement e Payment.
+///
+/// A linha é gravada antes de qualquer efeito, e o efeito vem depois: um evento
+/// que falhe ao ser processado continua registrado, com `status = FAILED`, em
+/// vez de sumir. É o que permite reprocessar sem depender de reenvio.
+///
+/// **Sem PII.** Não há coluna para `taxId`, conta, agência, banco ou dado de
+/// cartão — o payload de `payment.success` traz isso, e nada obriga o Fluxy a
+/// guardar. O que se guarda é o mínimo para correlacionar e auditar.
+model PaymentProviderEvent {
+  id       String          @id @default(cuid())
+  provider PaymentProvider
+
+  /// Identificador do evento no provedor. **Nullable** porque a ValidaPay não
+  /// documenta um: se vier no payload real, passa a ser preenchido e vira a
+  /// base natural da idempotência. Ver `idempotencyKey`.
+  externalEventId String?
+
+  /// Texto, e NÃO enum. Um tipo de evento desconhecido precisa ser gravável:
+  /// com enum, o Postgres recusaria a linha e o Fluxy perderia justamente o
+  /// registro de que algo novo apareceu. A tradução para comportamento é
+  /// decidida no código, que sabe ignorar o que não conhece.
+  eventType String
+
+  /// Nullable: um evento pode chegar sem correlação possível — cobrança
+  /// desconhecida, ou anterior a este sistema. Guardar mesmo assim é o que
+  /// permite investigar. Evento sem empresa NUNCA aparece em consulta de
+  /// tenant; só em consulta administrativa.
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  externalChargeId       String?
+  externalPaymentId      String?
+  externalSubscriptionId String?
+
+  /// Quando aconteceu no provedor (nullable — nem todo evento traz) e quando
+  /// chegou aqui. Separados de propósito: é a diferença entre os dois que
+  /// denuncia entrega fora de ordem.
+  occurredAt DateTime?
+  receivedAt DateTime  @default(now())
+
+  processedAt DateTime?
+  status      ProviderEventStatus @default(PENDING)
+
+  /// A garantia estrutural contra processar o mesmo evento duas vezes.
+  ///
+  /// **A fórmula NÃO está fechada.** A ValidaPay não documenta identificador de
+  /// evento, então a chave será derivada do payload real na fase de webhook —
+  /// provavelmente algo como `<eventType>:<externalPaymentId>`, mas isso só se
+  /// decide com exemplos em mãos. O que já está decidido é que ela existe, é
+  /// única no banco, e não pode ser apenas `eventType`: dois pagamentos
+  /// distintos geram dois `payment.success`, e colidir os dois descartaria um
+  /// pagamento real.
+  ///
+  /// A unicidade é composta com `provider` — ver `@@unique` abaixo. Não há
+  /// invariante testada de que a chave derivada contenha o provedor, e supor
+  /// isso é justamente o tipo de premissa não documentada que se paga caro.
+  idempotencyKey String
+
+  /// Hash do payload recebido, para detectar reenvio com conteúdo alterado sem
+  /// guardar o conteúdo. Nullable até a fase de webhook definir o que entra no
+  /// hash.
+  payloadHash String?
+
+  /// A garantia estrutural contra processar o mesmo evento duas vezes,
+  /// escopada ao provedor pela mesma razão dos identificadores externos em
+  /// SubscriptionCheckout: a chave é derivada de dado de terceiro, e nenhuma
+  /// documentação promete unicidade entre provedores.
+  @@unique([provider, idempotencyKey])
+  @@index([companyId, receivedAt(sort: Desc)])
+  @@index([status, receivedAt])
+  @@index([externalChargeId])
+  @@index([externalSubscriptionId])
 }

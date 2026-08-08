@@ -109,8 +109,8 @@ describe.skipIf(!prisma)("cadastro com intenção de plano", () => {
     });
 
     expect(pagamentos).toBe(0);
-    expect(company.asaasSubscriptionId).toBeNull();
-    expect(company.asaasCustomerId).toBeNull();
+    expect(company.validapaySubscriptionId).toBeNull();
+    expect(company.validapayCustomerId).toBeNull();
   });
 
   it("o dono nasce como OWNER — o usuário não escolhe o próprio papel", async () => {
