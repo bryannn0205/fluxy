@@ -7,7 +7,8 @@
 > O desenvolvimento roda em `localhost:5432/fluxy_dev` com a role `fluxy`; os
 > testes, isolados em `fluxy_test`. O `prisma dev` está aposentado.
 > **F3 (checkout ValidaPay) ainda NÃO foi iniciada.**
-> Ver seções 12 a 15 para a migração e 17 para o prompt de retomada.
+> Ver seções 12 a 15 para a migração, 16 para o checkpoint bloqueado da
+> F3-DISCOVERY e 18 para o prompt de retomada.
 
 ---
 
@@ -17,7 +18,7 @@
 | --------------- | -------------------------------------------------------------------- |
 | Branch atual    | `master`                                                             |
 | Working tree    | limpa                                                                |
-| HEAD            | `b0ccfac` — `docs: add ValidaPay integration status`                 |
+| HEAD            | `fbb152d` — `test: isolate database and finalize postgres migration` |
 | Merge do PR #4  | `ae3d088`                                                            |
 | Commit de F1+F2 | `ed8ae9e` — `feat: add ValidaPay client and payment provider schema` |
 | PR #4           | **mesclado** em `master` (`ae3d088`)                                 |
@@ -644,7 +645,175 @@ Servidor parado e `fluxy_dev` reconferido: **579/579, zero divergências**.
 
 ---
 
-## 16. Proibições vigentes
+## 16. F3-DISCOVERY — checkpoint bloqueado (10/08/2026)
+
+> ⚠️ **BLOQUEIO EXTERNO:** F3-DISCOVERY bloqueada aguardando correção/configuração
+> da conta sandbox pela ValidaPay para o erro `CBE041` no downstream Celcoin DICT.
+
+Exploração feita **fora do código** — chamadas diretas ao sandbox, sem
+persistir wrapper algum em `lib/validapay/`. Nenhum arquivo do repositório foi
+tocado nesta fase.
+
+### 16.1 Credencial sandbox nova
+
+- Uma **segunda** credencial sandbox foi criada porque a original não podia
+  ser editada. A antiga **não foi apagada** — segue preservada.
+- `VALIDAPAY_CLIENT_ID`, `VALIDAPAY_CLIENT_SECRET` e `VALIDAPAY_SCOPE` foram
+  substituídos manualmente no `.env` (fora do repositório, gitignorado) pelo
+  usuário — o agente não editou o `.env`.
+- **Confirmado carregada**: `GET /v1/products` respondeu com o `accountId`
+  `SANDBOX_d4d874b8-3091-70f2-a232-9552bbf62fc1`, da conta nova.
+
+### 16.2 OAuth — validado
+
+| Escopo testado                          | HTTP | `token_type` | `expires_in` |
+| --------------------------------------- | ---- | ------------ | ------------ |
+| `wallet/read` isolado                   | 200  | Bearer       | 3600         |
+| `wallet/write` isolado                  | 200  | Bearer       | 3600         |
+| `VALIDAPAY_SCOPE` completo (11 escopos) | 200  | Bearer       | 3600         |
+
+Em nenhum momento `client_secret`, `access_token` ou o header `Authorization`
+foram exibidos — só status, `token_type` e `expires_in`.
+
+### 16.3 Descobertas confirmadas
+
+- **`amount` é em reais**, não centavos (preços observados: `29` e `29.9`).
+- **`Product` contém `prices[]`** embutido — preço não é recurso à parte.
+- **`PUT /v1/products/:id` substitui o array de preços inteiro** e gera
+  `priceId`s novos (já sabido antes desta sessão, sem re-teste agora).
+- **`products/read` e `products/write`** funcionam.
+- **`checkouts/read` e `checkouts/write`** funcionam — `POST
+/v1/checkout-sessions` com `priceId` retorna `{ id, url, priceId }`.
+- **`successUrl` e `cancelUrl` são persistidos** — confirmado lendo de volta
+  via `GET /v1/checkout-sessions/:id`.
+- **`metadata` é persistido** — ecoado de volta byte a byte.
+- **Cliente prévio não é necessário para criar checkout session** — o
+  `POST /v1/checkout-sessions` só pediu `priceId`.
+- **`POST /v1/subscriptions` exige** (não documentado antes desta sessão):
+  - `paymentMethod`: `"pix" | "creditcard" | "boleto" | "pix_automatico"`;
+  - `customer.documentNumber` (CPF/CNPJ) — mesmo sem cliente pré-cadastrado;
+  - `items[]` (array, formato `{ priceId, quantity }`).
+
+### 16.4 Métodos de pagamento observados em `POST /v1/subscriptions`
+
+| `paymentMethod`  | Resultado                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| `pix`            | **400** — erro downstream (ver 16.5)                                                  |
+| `boleto`         | **400** — erro downstream idêntico ao de `pix`                                        |
+| `pix_automatico` | **500** — `"Método de pagamento não suportado para emissão"`                          |
+| `creditcard`     | **400** — exige objeto `card` ou `paymentMethodId` tokenizado; não testado além disso |
+
+### 16.5 Bloqueio — erro downstream Celcoin DICT (`CBE041`)
+
+`pix` e `boleto` falham com o **mesmo erro**, independente do CPF sintético ou
+do método escolhido — indício de problema do lado da ValidaPay na conta
+sandbox nova, não do payload enviado:
+
+```json
+{
+  "error": {
+    "message": "Account possui tamanho maximo de 20 caracteres",
+    "code": "INTERNAL_ERROR",
+    "details": {
+      "celcoinRequest": {
+        "endpoint": "/celcoin-baas-pix-dict-webservice/v1/pix/dict/entry",
+        "method": "POST"
+      },
+      "celcoinErrorResponse": {
+        "status": "ERROR",
+        "error": {
+          "errorCode": "CBE041",
+          "message": "Account possui tamanho maximo de 20 caracteres"
+        },
+        "version": "1.0.0"
+      }
+    }
+  }
+}
+```
+
+Ocorre no registro de chave PIX (DICT) da própria conta ValidaPay/Celcoin,
+antes de qualquer processamento do pagamento em si.
+
+**Consequência:** nenhum `chargeId` foi obtido. Sem `chargeId`, o simulador
+oficial não pôde ser chamado.
+
+### 16.6 Simulador oficial sandbox
+
+```
+POST /v1/wallet/pay/:chargeId
+scope: wallet/write
+sem body
+```
+
+**Ainda não executado** — depende de um `chargeId` válido, que depende do
+bloqueio da seção 16.5 ser resolvido.
+
+### 16.7 Estado final desta fase
+
+- Nenhum `chargeId` obtido.
+- `POST /v1/wallet/pay/:chargeId` **não executado**.
+- **Nenhum pagamento — real ou simulado — ocorreu.**
+- Request bin (`https://webhook.site/8770e5c7-9616-4d63-afed-28814e286077`)
+  segue **sem nenhum webhook recebido** (0/50).
+- Fórmula da `idempotencyKey` **permanece em aberto** — depende do payload
+  real de um evento, que depende do bloqueio ser resolvido.
+- F3a/F3b **continuam não implementadas**.
+- `Plan.validapayPriceMonthlyId`/`validapayPriceYearlyId` **não atualizados**.
+- **Nenhuma migration** criada.
+- PostgreSQL **intocado**.
+
+### 16.8 Ticket para o suporte da ValidaPay (sanitizado)
+
+Sem `token`, `client_secret`, `Authorization`, CPF, e-mail de teste ou
+qualquer PII — pronto para envio:
+
+```
+Assunto: Erro CBE041 (Celcoin DICT) ao criar subscription via
+POST /v1/subscriptions em conta sandbox nova
+
+Ambiente: Sandbox — accountId SANDBOX_d4d874b8-3091-70f2-a232-9552bbf62fc1
+
+Reprodução: POST /v1/subscriptions com priceId de um preço existente
+(RECURRING, BRL), items: [{ priceId, quantity: 1 }], customer: { name,
+email, documentNumber } (CPF sintético com dígito verificador válido) e
+paymentMethod variando entre pix e boleto.
+
+Resultado: ambos os métodos falham de forma idêntica com HTTP 400:
+
+{
+  "error": {
+    "message": "Account possui tamanho maximo de 20 caracteres",
+    "code": "INTERNAL_ERROR",
+    "details": {
+      "celcoinRequest": {
+        "endpoint": "/celcoin-baas-pix-dict-webservice/v1/pix/dict/entry",
+        "method": "POST"
+      },
+      "celcoinErrorResponse": {
+        "status": "ERROR",
+        "error": { "errorCode": "CBE041", "message": "Account possui tamanho maximo de 20 caracteres" },
+        "version": "1.0.0"
+      }
+    }
+  }
+}
+
+Ocorre no registro de chave PIX (DICT) do lado da própria conta
+ValidaPay/Celcoin, antes de qualquer processamento do pagamento em si — o
+erro é idêntico trocando CPF e método, o que aponta para um campo
+(provavelmente o identificador interno da conta) excedendo 20 caracteres na
+chamada que a ValidaPay faz para a Celcoin.
+
+Impacto: bloqueia a emissão de qualquer cobrança nessa credencial sandbox
+nova, incluindo o fluxo de teste do simulador oficial
+POST /v1/wallet/pay/:chargeId, já que não é possível gerar um chargeId para
+simular.
+```
+
+---
+
+## 17. Proibições vigentes
 
 - ❌ Não iniciar **F3**
 - ❌ Não criar produtos/preços na ValidaPay
@@ -669,7 +838,7 @@ Servidor parado e `fluxy_dev` reconferido: **579/579, zero divergências**.
 
 ---
 
-## 17. Prompt de retomada
+## 18. Prompt de retomada
 
 Cole o texto abaixo numa conversa nova:
 
@@ -686,8 +855,9 @@ Estado: 579 linhas migradas e equivalentes ao backup, 9 migrations,
 o catálogo migrado.
 
 F3 (checkout ValidaPay) ainda NÃO foi iniciada — é o próximo trabalho de
-produto, quando eu autorizar. Respeite integralmente as proibições da
-seção 16.
+produto, quando eu autorizar. A F3-DISCOVERY está bloqueada aguardando a
+ValidaPay corrigir o erro CBE041 (seção 16). Respeite integralmente as
+proibições da seção 17.
 
 Não faça commit sem minha autorização.
 ```
