@@ -1,12 +1,13 @@
 # Estado da integração ValidaPay — documento de continuidade
 
-**Atualizado em:** 08/08/2026
+**Atualizado em:** 10/08/2026
 **Propósito:** permitir retomar o trabalho numa conversa nova, sem depender do histórico anterior.
 
-> **Onde paramos:** P1, P2 e P3 concluídas. Os dados do `prisma dev` estão
-> exportados, conferidos e com cópia cifrada fora do repositório.
-> **P4/P5 ainda NÃO foram executados** — nenhum banco novo existe.
-> Ver seções 10, 11 e 12.
+> **Onde paramos:** ✅ **Migração local para PostgreSQL 18 FINALIZADA.**
+> O desenvolvimento roda em `localhost:5432/fluxy_dev` com a role `fluxy`; os
+> testes, isolados em `fluxy_test`. O `prisma dev` está aposentado.
+> **F3 (checkout ValidaPay) ainda NÃO foi iniciada.**
+> Ver seções 12 a 15 para a migração e 17 para o prompt de retomada.
 
 ---
 
@@ -21,8 +22,9 @@
 | Commit de F1+F2 | `ed8ae9e` — `feat: add ValidaPay client and payment provider schema` |
 | PR #4           | **mesclado** em `master` (`ae3d088`)                                 |
 
-Nenhum commit foi feito durante P2/P3 — o trabalho de migração não tocou em
-código. Os scripts de exportação vivem **fora do repositório**.
+Os scripts de exportação, importação e reconciliação vivem **fora do
+repositório**. As únicas mudanças de código que a migração produziu foram as do
+isolamento de testes (seção 14.2) e a extração de `prisma/seed-plans.ts`.
 
 **Vercel:** projeto principal `fluxy` está **Ready**. Existe um projeto duplicado `fluxy-fdnx` com **Error** — **fora do escopo, não mexer, não copiar secrets para ele**.
 
@@ -154,14 +156,17 @@ enum ProviderEventStatus        { PENDING, PROCESSED, FAILED, IGNORED }
 
 ## 5. Testes — estado aprovado
 
-|                         |                              |
-| ----------------------- | ---------------------------- |
-| `vitest run`            | **589/589**, **39 arquivos** |
-| `tsc --noEmit`          | 0 erros                      |
-| `eslint`                | exit 0                       |
-| `next build`            | limpo                        |
-| `db:seed`               | ok                           |
-| `prisma migrate status` | 9 migrations, banco em dia   |
+Números **de F1/F2**, quando a suíte ainda rodava contra o `prisma dev`. O estado
+atual, depois da migração e do isolamento, está na seção 14.4.
+
+|                         |                                             |
+| ----------------------- | ------------------------------------------- |
+| `vitest run`            | 589/589, 39 arquivos → hoje **628/628**, 42 |
+| `tsc --noEmit`          | 0 erros                                     |
+| `eslint`                | exit 0                                      |
+| `next build`            | limpo                                       |
+| `db:seed`               | ok                                          |
+| `prisma migrate status` | 9 migrations, banco em dia                  |
 
 ---
 
@@ -429,65 +434,224 @@ de drivers da AMD, e por isso WinRAR foi a escolha.
 
 ---
 
-## 12. Ponto exato onde paramos
+## 12. P4/P5 — ambiente novo criado e migrado
 
-> ## ⚠️ P4 e P5 AINDA NÃO FORAM EXECUTADOS.
->
-> Nenhum banco novo existe. Nenhum dado foi importado. `.env` não foi alterado.
+**P4 — role e bancos.** No PostgreSQL 18.4 local:
 
-**Concluídas:** P1 (PostgreSQL local auditado, `pgpass.conf` corrigido,
-autenticação validada) · P2 (inventário) · P3 (backup completo, validado e
-cifrado).
+| Objeto           | Estado                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| Role `fluxy`     | `LOGIN` · **sem** SUPERUSER, CREATEDB, CREATEROLE, REPLICATION, BYPASSRLS · sem membership |
+| `fluxy_dev`      | owner `fluxy`                                                                              |
+| `fluxy_shadow`   | owner `fluxy`                                                                              |
+| `fluxy_test`     | owner `fluxy` (criado em P8B)                                                              |
+| `gestao_pedidos` | owner `postgres` — **intocado**                                                            |
 
-### Próxima etapa — P4/P5
+A senha da role foi definida pelo usuário via `\password fluxy`, que monta o hash
+no cliente: a senha em claro nunca trafega nem entra no log do servidor. O agente
+não cria nem digita senhas.
 
-1. Criar a **role dedicada `fluxy`** — a senha é definida pelo usuário; o agente
-   não cria nem digita senhas.
-2. Criar **`fluxy_dev`**.
-3. Criar **`fluxy_shadow`** — banco separado, **nunca** o mesmo de
-   desenvolvimento.
-4. Aplicar as migrations com **`prisma migrate deploy`** (nunca `db push`, nunca
-   `migrate reset`).
-5. **`prisma generate`**.
-6. **PARAR.** Não importar dado nenhum até o importador ser revisado.
+O schema `public` dos bancos novos pertence a `pg_database_owner`, que resolve
+para o dono do banco — `fluxy` cria objetos nos próprios bancos sem `GRANT`
+adicional.
 
-A role `postgres` continua sendo usada só para administração/migração, nunca como
-credencial permanente da aplicação.
+> ⚠️ **Collation `Portuguese_Brazil.1252`**, herdado do `template1` desta
+> instalação Windows. Encoding é UTF8. Não afeta o dado armazenado, só ordenação
+> e índices. **Diferença de ambiente a revisar contra produção**, que
+> provavelmente usa `en_US.UTF-8` ou `C.UTF-8`.
 
-### Depois do importador revisado
+**P5 — schema aplicado.** `prisma migrate deploy` aplicou as **9 migrations** em
+`fluxy_dev`. As 19 tabelas ficaram com `owner = fluxy`, o que prova que a conexão
+autenticou como a role dedicada. `prisma generate` em seguida.
 
-7. Importar os 18 JSONL na **ordem topológica de FK**:
-   `Plan → Company → User → Account → Session → VerificationToken → Invitation →
-Customer → Product → Order → OrderItem → OrderAttachment → StockMovement →
-AuditLog → Notification → Payment → SubscriptionCheckout → PaymentProviderEvent`
-8. Provar equivalência: contagens por tabela contra a seção 10, mais integridade
-   referencial (Company→Plan, User→Company, Order→Company, Payment→Order,
-   isolamento por tenant, preços dos planos).
-9. **Só então** alterar `DATABASE_URL` no `.env` local.
-10. Validar sem `prisma dev`: `prisma generate`, `migrate status`, `tsc`,
-    `eslint`, `vitest run` (esperado 589/589), `next build`.
-
-Pontos já resolvidos que o importador pode assumir:
-
-- **Não há sequences.** Zero `SERIAL`, `IDENTITY` ou `CREATE SEQUENCE` nas 9
-  migrations: todo `id` é `cuid()` gerado no cliente, então os IDs sobrevivem por
-  construção e nada precisa ser ressincronizado.
-- **`_prisma_migrations` não foi exportada.** Quem a preenche no banco novo é o
-  `migrate deploy` — e é assim que a linha `probe_tx` fica para trás.
-- **Não há `BYTEA`** e não há `TIMESTAMPTZ`: nenhum problema de binário ou fuso.
-
-**Não apagar o ambiente antigo** mesmo após tudo funcionar. A exclusão do
-plaintext de backup é decisão posterior, só depois de `fluxy_dev` migrado e
-validado.
+Conferido no catálogo: 18 tabelas do Fluxy + `_prisma_migrations`, **199
+colunas**, 13 `numeric`, 40 `timestamp`, 2 `jsonb`, 1 `text[]`, 15 enums, **zero
+sequences**. As 199 colunas batem com o que a exportação mediu no banco antigo —
+equivalência estrutural por dois caminhos independentes.
 
 ---
 
-## 13. Proibições vigentes
+## 13. P6 — importação dos dados
+
+### 13.1 O importador
+
+Fora do repositório, em TypeScript, usando o `pg` que já vem de
+`@prisma/adapter-pg`. **Nenhuma dependência nova.**
+
+**`pg` direto, não Prisma Client.** O fator decisivo foram as 40 colunas
+`timestamp without time zone`: passar por `Date` do JavaScript introduz conversão
+de fuso silenciosa.
+
+**O `INSERT` recebe a LINHA ORIGINAL do JSONL como único parâmetro:**
+
+```sql
+INSERT INTO "Tabela" ("a", "b", ...)
+SELECT "a", "b", ...
+FROM jsonb_populate_record(NULL::"Tabela", $1::jsonb)
+```
+
+Quem lê o JSON e produz os tipos é o Postgres. O JavaScript não converte valor
+nenhum. Isso existe porque `JSON.parse` → `JSON.stringify` destrói números acima
+de `Number.MAX_SAFE_INTEGER` — `9007199254740993` volta `…992` —, e comparar
+depois com `JSON.parse` da mesma fonte produziria **falso positivo**. Conversões
+confirmadas experimentalmente antes de adotar, inclusive precisão exata de
+inteiro de 30 dígitos dentro de `jsonb`.
+
+### 13.2 Garantias na transação
+
+Uma transação única: `BEGIN` → `LOCK` das 18 tabelas em `SHARE ROW EXCLUSIVE` →
+cobertura de colunas 199/199 → conferir vazio → 579 `INSERT`s em ordem topológica
+→ contagens → **igualdade de conjunto das chaves** → **equivalência de conteúdo
+campo a campo** → **33/33 FKs** → invariante multi-tenant → `_prisma_migrations`
+→ `COMMIT`.
+
+Sem `ON CONFLICT`, `UPDATE`, `DELETE`, `TRUNCATE`, `upsert` ou desativação de
+constraint. Restauração para banco vazio, não sincronização.
+
+**Equivalência provada:** 579/579 registros · 2.676 campos comparados em JS · 8
+campos `jsonb` comparados **dentro do Postgres** (jsonb contra jsonb, a partir da
+linha original) · zero divergências. `DECIMAL` como string literal, `TIMESTAMP`
+relido com `to_char` sem fuso, `TEXT[]` com ordem, `NULL ≠ ""`.
+
+### 13.3 Duas falhas encontradas pelo caminho
+
+**Primeira tentativa abortou** na verificação de FKs: `array_agg(attname)`
+devolve `name[]` (OID 1003), sem parser no node-postgres, então a lista de
+colunas chegava como a string `{userId}` e a aridade era medida sobre o
+comprimento do texto. `ROLLBACK` limpo, nada persistido. Corrigido com
+`attname::text` e uma guarda que checa **formato antes de aridade**.
+
+**Segunda tentativa: `COMMIT`.** 579 linhas em 2,87 s.
+
+### 13.4 Resultado
+
+| Tabela              | Linhas | Tabela                 | Linhas |
+| ------------------- | -----: | ---------------------- | -----: |
+| `Plan`              |      2 | `Order`                |     16 |
+| `Company`           |     12 | `OrderItem`            |     17 |
+| `User`              |      7 | `OrderAttachment`      |      0 |
+| `Account`           |      0 | `StockMovement`        |     11 |
+| `Session`           |      0 | `AuditLog`             |      8 |
+| `VerificationToken` |    486 | `Notification`         |      0 |
+| `Invitation`        |      0 | `Payment`              |      0 |
+| `Customer`          |     10 | `SubscriptionCheckout` |      0 |
+| `Product`           |     10 | `PaymentProviderEvent` |      0 |
+
+**Total: 579 linhas.** IDs preservados por construção — todo `id` é `cuid()`
+gerado no cliente, e a lista de colunas é explícita, então nenhum default dispara.
+
+---
+
+## 14. P7/P8 — a suíte de testes contaminava o banco migrado
+
+### 14.1 A descoberta
+
+Logo após a importação, `npm test` passou 589/589 — e **escreveu em
+`fluxy_dev`**: 28 linhas em `VerificationToken` e o `updatedAt` de um `Plan`.
+
+Causa: os testes liam `DATABASE_URL`, que agora apontava para o banco migrado.
+Enquanto essa variável endereçava um banco descartável do `prisma dev`, o
+problema era invisível. A migração não o causou — **expôs**.
+
+Havia **dois** caminhos de escrita, e o segundo só apareceu depois de fechar o
+primeiro:
+
+| Caminho                     | Cliente                  | Lia            |
+| --------------------------- | ------------------------ | -------------- |
+| Testes escrevendo direto    | `createTestPrismaClient` | `DATABASE_URL` |
+| App exercitada pelos testes | singleton de `lib/db.ts` | `DATABASE_URL` |
+
+A cadeia do segundo: `AuthService` → `createEmailVerificationToken()` de
+`lib/tokens.ts` → singleton de `lib/db.ts`. Por isso **só** `VerificationToken`
+era afetado — é o único ponto de `lib/` que escreve.
+
+### 14.2 A correção
+
+**`fluxy_test`**, banco separado com as 9 migrations, owner `fluxy`.
+
+**`TEST_DATABASE_URL`** no `.env` (gitignorado), resolvida e validada por
+`tests/helpers/test-database-url.ts` — recusa `fluxy_dev`, `fluxy_shadow`,
+`gestao_pedidos`, `postgres`, host não-local, porta ≠ 5432 e banco ≠
+`fluxy_test`. **`DATABASE_URL` nunca é usada como alternativa.**
+
+**Isolamento no `vitest.config.ts`:** durante o Vitest, `TEST_DATABASE_URL` _e_
+`DATABASE_URL` apontam para `fluxy_test`, cobrindo os dois caminhos. Nenhuma
+lógica de teste entrou em `lib/db.ts` — é o ambiente que muda. Fora dos testes,
+`DATABASE_URL` segue em `fluxy_dev`.
+
+**Três guardas independentes:** no config (aborta a suíte), no `globalSetup`
+(confirma pelo servidor: `current_database`, `current_user`, porta, migrations,
+nº de tabelas) e no helper do client.
+
+**`globalSetup`** prepara `fluxy_test` a cada execução, numa transação: valida o
+alvo, prova a ordem de limpeza contra as **33 FKs** do catálogo, trava as tabelas,
+apaga em ordem topológica reversa e semeia **somente** o catálogo de planos. Sem
+`TRUNCATE`, sem `DROP`, sem `migrate reset`, sem `seedDemoCompany`.
+
+**`prisma/seed-plans.ts`** — catálogo extraído para módulo próprio, fonte única
+compartilhada entre `prisma/seed.ts` e a preparação de testes. Valores, slugs,
+preços e limites inalterados; `seedDemoCompany` e `applyApprovedPriceChange`
+seguem no fluxo normal do seed, intocados.
+
+### 14.3 Reconciliação
+
+O `fluxy_dev` foi devolvido ao estado pós-importação **duas vezes**, por
+transação, removendo apenas as linhas identificadas por _chaves do banco MINUS
+chaves do backup_ — nunca por data, expiração ou padrão de token.
+
+### 14.4 Validação final
+
+| Verificação                     | Resultado                         |
+| ------------------------------- | --------------------------------- |
+| `npm test`, 1ª execução         | **628/628** · 42 arquivos         |
+| `npm test`, 2ª execução seguida | **628/628** · sem limpeza manual  |
+| `fluxy_dev` após cada execução  | **579/579 equivalente ao backup** |
+| `npm run type-check`            | exit 0                            |
+| `npm run lint`                  | exit 0                            |
+| `npm run build`                 | exit 0 · 24 páginas, 26 rotas     |
+
+A conta dos testes: 589 históricos + 17 (guarda de `TEST_DATABASE_URL`) + 19
+(preparador e catálogo) + 3 (isolamento com conexão real) = **628**.
+
+---
+
+## 15. P9 — validação operacional e FIM DA MIGRAÇÃO
+
+`npm run dev` com o `prisma dev` parado:
+
+- **Ready em 3,3 s**, `http://localhost:3000`;
+- rotas públicas `/`, `/login`, `/plans`, `/register`, `/forgot-password`,
+  `/reset-password` → **200**; `/dashboard` → **307** para login;
+- `/plans` renderiza **Fluxy Standard R$ 29** e **Fluxy Pro R$ 89** com os
+  limites corretos — dados vindos do banco migrado;
+- zero erros no console do navegador;
+- **nenhuma conexão nas portas 51217-51220** do `prisma dev`;
+- `pg_stat_database`: `fluxy_dev` +1 transação e +16 tuplas durante as
+  requisições; `fluxy_test` zero; **`gestao_pedidos` com contador acumulado 0 —
+  nunca foi acessado**;
+- nenhuma migration automática, nenhum seed automático.
+
+Servidor parado e `fluxy_dev` reconferido: **579/579, zero divergências**.
+
+> # ✅ MIGRAÇÃO LOCAL PARA POSTGRESQL 18 FINALIZADA
+>
+> O desenvolvimento roda em **PostgreSQL 18.4 local**, `localhost:5432`,
+> `fluxy_dev`, role `fluxy`. O **`prisma dev` está aposentado** do fluxo normal —
+> não é mais iniciado, e o `npm run db:dev` deixou de ser parte do trabalho
+> diário.
+>
+> O ambiente antigo continua preservado: `Data\default\.pglite`,
+> `durable-streams.sqlite` e os backups. **Nada foi apagado.**
+
+---
+
+## 16. Proibições vigentes
 
 - ❌ Não iniciar **F3**
 - ❌ Não criar produtos/preços na ValidaPay
 - ❌ Não criar checkout
 - ❌ Não implementar webhook
+- ❌ **Não rodar `npm test` apontando para `fluxy_dev`** — a suíte usa
+  `TEST_DATABASE_URL` e só pode tocar `fluxy_test`
 - ❌ Não apagar `durable-streams.sqlite`
 - ❌ Não executar `prisma dev rm`
 - ❌ Não tocar em `gestao_pedidos`
@@ -505,28 +669,26 @@ validado.
 
 ---
 
-## 14. Prompt de retomada
+## 17. Prompt de retomada
 
 Cole o texto abaixo numa conversa nova:
 
 ```
-Leia docs/STATUS-VALIDAPAY.md no repositório Fluxy e retome exatamente
-do ponto registrado na seção 12.
+Leia docs/STATUS-VALIDAPAY.md no repositório Fluxy.
 
-Estamos migrando o ambiente de desenvolvimento do `prisma dev` para o
-PostgreSQL 18 local normal. P1, P2 e P3 estão concluídas: o banco antigo
-foi inventariado (579 linhas em 18 tabelas) e os dados estão exportados
-em JSONL, validados (18/18 OK, 18/18 SHA-256) e com cópia cifrada.
+A MIGRAÇÃO LOCAL PARA POSTGRESQL 18 ESTÁ FINALIZADA (seção 15). O
+desenvolvimento roda em localhost:5432/fluxy_dev com a role `fluxy`; os
+testes em fluxy_test via TEST_DATABASE_URL. O `prisma dev` está
+aposentado e NÃO deve ser iniciado.
 
-Próxima etapa é P4/P5: criar a role dedicada `fluxy` (senha definida por
-mim), criar `fluxy_dev` e `fluxy_shadow`, aplicar `prisma migrate deploy`
-e rodar `prisma generate`. PARE antes de importar qualquer dado — quero
-revisar o importador primeiro.
+Estado: 579 linhas migradas e equivalentes ao backup, 9 migrations,
+628/628 testes, type-check, lint e build limpos, aplicação sobe e serve
+o catálogo migrado.
 
-O `prisma dev` está parado e NÃO deve ser reiniciado sem me explicar
-antes por quê, o que será feito e quando será parado de novo.
+F3 (checkout ValidaPay) ainda NÃO foi iniciada — é o próximo trabalho de
+produto, quando eu autorizar. Respeite integralmente as proibições da
+seção 16.
 
-Respeite integralmente as proibições da seção 13. Não inicie F3.
 Não faça commit sem minha autorização.
 ```
 
@@ -538,6 +700,14 @@ Não faça commit sem minha autorização.
 - Fórmula da `idempotencyKey` — fechar na fase de webhook, com payloads reais.
 - `callbackUrl` é escrito pelo middleware e **não consumido** por ninguém. Corrigir exige lista de permissão de destinos.
 - Rotas sob `/dashboard` ficam no fallback de `loading.tsx` no navegador embutido usado nas verificações; reproduz em rotas não tocadas, dev e produção. Conferir num navegador comum.
+- **Teardown de `VerificationToken` nos testes.** Os testes que exercitam cadastro
+  e verificação de e-mail criam 28 tokens e não os removem. Hoje o `globalSetup`
+  limpa `fluxy_test` antes de cada execução, então a suíte é reexecutável e nada
+  vaza para `fluxy_dev` — mas isso trata o sintoma. Corrigir na raiz deixaria a
+  limpeza como rede de segurança em vez de necessidade.
+- **Collation `Portuguese_Brazil.1252`** em `fluxy_dev`, `fluxy_shadow` e
+  `fluxy_test`, herdado do `template1` do Windows. Não afeta o dado, só ordenação
+  e índices. Revisar contra o collation de produção.
 
 ## Pontos não documentados pela ValidaPay
 

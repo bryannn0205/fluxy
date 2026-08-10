@@ -3,78 +3,16 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/lib/generated/prisma/client";
-import { DEFAULT_PLAN_SLUG, MODULE_KEYS, TRIAL_DURATION_DAYS } from "@/lib/constants";
+import { DEFAULT_PLAN_SLUG, TRIAL_DURATION_DAYS } from "@/lib/constants";
 import { hashPassword } from "@/lib/password";
+
+// Catálogo de planos extraído para módulo próprio, sem mudança de valores nem
+// de comportamento — a preparação do banco de testes reutiliza `seedPlans` sem
+// arrastar `seedDemoCompany` junto. Ver prisma/seed-plans.ts.
+import { seedPlans } from "./seed-plans";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-// Definição declarativa dos planos. Preço fica aqui só para a CRIAÇÃO — a
-// sincronização normal não o toca; ver seedPlans e applyApprovedPriceChange.
-const PLANS = [
-  {
-    slug: DEFAULT_PLAN_SLUG,
-    name: "Fluxy Standard",
-    priceMonthly: 29,
-    priceYearly: 290,
-    maxUsers: 5,
-    maxOrdersPerMonth: 500,
-    maxProducts: 500,
-    maxCustomers: 2000,
-  },
-  {
-    slug: "pro",
-    name: "Fluxy Pro",
-    priceMonthly: 89,
-    priceYearly: 890,
-    maxUsers: 20,
-    maxOrdersPerMonth: 3000,
-    maxProducts: 3000,
-    maxCustomers: 10_000,
-  },
-] as const;
-
-/**
- * Sincroniza nome, módulos e limites — nunca preço.
- *
- * O `update` deixou de ser vazio de propósito. Com `update: {}`, mudar um
- * limite aqui nunca chegava a uma instalação existente: foi assim que o
- * `standard` ficou com 3 dos 5 módulos, criado antes de PRODUCTION e STOCK
- * entrarem em MODULE_KEYS e nunca mais corrigido.
- *
- * **Preço fica fora do update.** Alterá-lo é decisão comercial com contrato
- * por trás; um seed que reescreve preço a cada execução muda o que o cliente
- * paga sem ninguém pedir. Preço só é gravado na criação, quando não há
- * contrato anterior a respeitar.
- *
- * `modules` vem de Object.values(MODULE_KEYS), nunca de uma lista repetida
- * aqui — duplicar a lista faz o banco divergir do código na primeira vez que
- * um módulo novo for declarado.
- */
-async function seedPlans() {
-  for (const plan of PLANS) {
-    const { slug, name, priceMonthly, priceYearly, ...limits } = plan;
-
-    const saved = await prisma.plan.upsert({
-      where: { slug },
-      update: {
-        name,
-        modules: Object.values(MODULE_KEYS),
-        ...limits,
-      },
-      create: {
-        slug,
-        name,
-        priceMonthly,
-        priceYearly,
-        modules: Object.values(MODULE_KEYS),
-        ...limits,
-      },
-    });
-
-    console.log(`Plan seeded: ${saved.name} (${saved.slug})`);
-  }
-}
 
 // Reajuste comercial aprovado em 04/08/2026 para o plano standard.
 // Aplica-se SOMENTE a este plano; o `pro` nunca é tocado por aqui.
@@ -381,7 +319,7 @@ async function main() {
   //   1. seedPlans              — cria o que falta, sincroniza nome/módulos/limites
   //   2. applyApprovedPriceChange — reajuste comercial, auto-limitante
   //   3. seedDemoCompany        — dados de demonstração, só fora de produção
-  await seedPlans();
+  await seedPlans(prisma);
   await applyApprovedPriceChange();
 
   const defaultPlan = await prisma.plan.findUniqueOrThrow({
