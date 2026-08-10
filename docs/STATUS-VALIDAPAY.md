@@ -647,8 +647,10 @@ Servidor parado e `fluxy_dev` reconferido: **579/579, zero divergências**.
 
 ## 16. F3-DISCOVERY — checkpoint bloqueado (10/08/2026)
 
-> ⚠️ **BLOQUEIO EXTERNO:** F3-DISCOVERY bloqueada aguardando correção/configuração
-> da conta sandbox pela ValidaPay para o erro `CBE041` no downstream Celcoin DICT.
+> ⚠️ **`CBE041` suspenso como bloqueio principal — ver 16.9.** O endpoint que
+> disparou o erro (`POST /v1/subscriptions`) **não é** o endpoint documentado
+> de criação. F3-DISCOVERY segue sem `chargeId` obtido, agora aguardando o
+> primeiro teste pelo fluxo oficial (`POST /v1/charges`, seção 16.10).
 
 Exploração feita **fora do código** — chamadas diretas ao sandbox, sem
 persistir wrapper algum em `lib/validapay/`. Nenhum arquivo do repositório foi
@@ -696,6 +698,10 @@ foram exibidos — só status, `token_type` e `expires_in`.
 
 ### 16.4 Métodos de pagamento observados em `POST /v1/subscriptions`
 
+> ⚠️ **Ver 16.9** — confirmado depois, na documentação oficial, que essa rota
+> **não existe** como endpoint de criação de assinatura. Resultados abaixo
+> preservados como histórico da investigação, não como caminho a seguir.
+
 | `paymentMethod`  | Resultado                                                                             |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | `pix`            | **400** — erro downstream (ver 16.5)                                                  |
@@ -704,6 +710,11 @@ foram exibidos — só status, `token_type` e `expires_in`.
 | `creditcard`     | **400** — exige objeto `card` ou `paymentMethodId` tokenizado; não testado além disso |
 
 ### 16.5 Bloqueio — erro downstream Celcoin DICT (`CBE041`)
+
+> ⚠️ **Ver 16.9** — este erro ocorreu numa rota fora da documentação oficial.
+> Fica em aberto se é um bug de conta ou apenas o comportamento de uma rota
+> não suportada para este fluxo. O ticket da seção 16.8 fica **suspenso**
+> até confirmarmos (ou não) o mesmo erro no fluxo correto.
 
 `pix` e `boleto` falham com o **mesmo erro**, independente do CPF sintético ou
 do método escolhido — indício de problema do lado da ValidaPay na conta
@@ -763,10 +774,14 @@ bloqueio da seção 16.5 ser resolvido.
 - **Nenhuma migration** criada.
 - PostgreSQL **intocado**.
 
-### 16.8 Ticket para o suporte da ValidaPay (sanitizado)
+### 16.8 Ticket para o suporte da ValidaPay (sanitizado) — SUSPENSO
+
+> ⚠️ **Não enviar ainda.** Ver 16.9 — o endpoint reproduzido aqui não é
+> documentado como rota de criação de assinatura. Mantido como registro
+> histórico; só reabrir se o mesmo erro aparecer no fluxo oficial (16.10).
 
 Sem `token`, `client_secret`, `Authorization`, CPF, e-mail de teste ou
-qualquer PII — pronto para envio:
+qualquer PII — pronto para envio, **se e quando reaberto**:
 
 ```
 Assunto: Erro CBE041 (Celcoin DICT) ao criar subscription via
@@ -810,6 +825,191 @@ nova, incluindo o fluxo de teste do simulador oficial
 POST /v1/wallet/pay/:chargeId, já que não é possível gerar um chargeId para
 simular.
 ```
+
+### 16.9 Correção arquitetural — `POST /v1/subscriptions` não é rota de criação (10/08/2026)
+
+**Fonte:** documentação oficial em `docs.validapay.com.br`, seção "Assinaturas"
+da Referência da API — navegada diretamente, não só a transcrição do usuário.
+
+A seção "Assinaturas" tem **exatamente 7 endpoints**, todos de gerenciamento
+de uma assinatura **que já existe**:
+
+```
+GET    /v1/subscriptions
+GET    /v1/subscriptions/:subscriptionId
+PATCH  /v1/subscriptions/:subscriptionId          (upgrade/downgrade de item)
+PATCH  /v1/subscriptions/:subscriptionId          (cancelar item)
+DELETE /v1/subscriptions/:subscriptionId          (cancelar assinatura)
+POST   /v1/subscriptions/:subscriptionId/items    (adicionar item)
+PUT    /v1/subscriptions/:subscriptionId/items/:itemId  (rota canônica de upgrade/downgrade)
+POST   /v1/subscriptions/:subscriptionId/prorata
+```
+
+**Não existe rota de criação.** `POST /v1/subscriptions`, usado nas seções
+16.4/16.5, **não faz parte da API pública documentada**.
+
+**Decisões:**
+
+- **Não usar mais `POST /v1/subscriptions` para criação inicial.**
+- **Ticket `CBE041` (16.8) suspenso/descartado como bloqueio principal**
+  enquanto essa rota não for usada de novo — o erro pode ser específico de
+  uma rota fora do fluxo suportado, não necessariamente um bug de conta.
+
+### 16.10 Fluxo oficial reconstruído
+
+**Endpoint inicial real:** `POST /v1/charges` (não `/v1/subscriptions`, não
+`/v1/checkout-sessions`) — escopo `checkouts/write`, não `subscriptions/write`.
+Três variações documentadas na mesma rota, diferindo só em `paymentMethod`:
+`pix`, `boleto`, `creditcard`.
+
+**Request** (exemplo `pix`, da documentação oficial):
+
+```json
+POST /v1/charges
+{
+  "paymentMethod": "pix",
+  "externalId": "pedido-2026-0001",
+  "customer": {
+    "name": "<NOME_EXEMPLO>",
+    "email": "<EMAIL_EXEMPLO>",
+    "documentNumber": "<DOCUMENTO_EXEMPLO>",
+    "phone": "<TELEFONE_EXEMPLO>",
+    "cep": "01310100"
+  },
+  "items": [{ "priceId": "price_abc123", "quantity": 1 }],
+  "metadata": { "referencia": "pedido-001" }
+}
+```
+
+**Response 200 (síncrona):**
+
+```json
+{
+  "success": true,
+  "customerId": "cus_xxx",
+  "chargeId": "cha_abc123",
+  "pix": { "emv": "...", "qrCode": "data:image/png;base64,..." }
+}
+```
+
+Para `creditcard`, a resposta já vem com `"status": "paid"` — liquida
+**síncrono**, sem precisar do simulador. Para `pix`/`boleto`, o charge fica
+pendente até alguém pagar — é aí que entra o simulador (16.10.2).
+
+**Onde nasce cada identificador:**
+
+| Identificador                | Onde aparece                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chargeId` (`cha_...`)       | **Síncrono**, na resposta de `POST /v1/charges`. Replicado no webhook `charge.created`.                                                              |
+| `customerId` (`cus_...`)     | **Síncrono**, mesma resposta — confirma de novo que cliente prévio não é obrigatório: a ValidaPay cria o cliente a partir dos dados enviados inline. |
+| `subscriptionId` (`sub_...`) | **NÃO vem na resposta síncrona.** Só aparece depois, no webhook `subscription.created`, ou consultando `GET /v1/subscriptions` posteriormente.       |
+
+Relevante para `SubscriptionCheckout`: a correlação do webhook com a empresa
+precisa passar por `externalChargeId` (disponível na hora, síncrono) —
+`subscriptionId` só existe depois que o webhook chega.
+
+**Sequências oficiais de eventos** (documentação, "Relação com operações da API"):
+
+```
+Boleto/PIX — assinatura recorrente:
+  subscription.created → charge.created → (cliente paga) → payment.success → subscription.activated
+
+Cartão — 1º pagamento:
+  subscription.created → charge.created → subscription.activated
+  (payment.success NÃO dispara para cartão)
+
+Renovação (ciclo 2+):
+  charge.created → payment.success → subscription.renewed
+```
+
+**Divergência a investigar depois:** o `checkout-session` criado na sessão
+anterior (16.3) usou `cancelUrl`; a documentação oficial só documenta
+`successUrl` e `failureUrl` para essa rota. Não testado de novo agora —
+testar criaria recurso.
+
+#### 16.10.2 Simulador sandbox (reafirmado)
+
+```
+POST /v1/wallet/pay/:chargeId
+scope: wallet/write
+sem body
+```
+
+Path param é exatamente o `chargeId` retornado pela resposta síncrona de
+`POST /v1/charges`. Fluxo correto: `POST /v1/charges` (`pix` ou `boleto`) →
+pega `chargeId` da resposta → `POST /v1/wallet/pay/:chargeId` → observa
+`payment.success` e `subscription.activated` no request bin.
+
+### 16.11 Segurança do webhook — assinatura HMAC (documentação oficial)
+
+```
+Header:  X-Webhook-Signature: t={timestamp},v1={hmac_sha256}
+Cálculo: HMAC-SHA256(secret, "{timestamp}.{rawBody}")
+Auth opcional: x-access-token, se authToken configurado no webhook
+Filtro: só entrega se webhook status=active E evento estiver na lista `events` cadastrada
+```
+
+Cadastro via `POST /v1/users/webhooks` ou painel (`Integração → Webhooks`) —
+o `secret` é devolvido **na criação** e deve ser guardado para validar a
+assinatura depois. Existe endpoint de teste: `POST /v1/users/webhooks/test`.
+
+**Regras para o desenho de F3b** (não implementado ainda):
+
+- **HMAC como autenticação principal** — extrair `t` e `v1` do header,
+  recalcular `HMAC-SHA256(secret, "{t}.{rawBody}")`, comparar com `v1`.
+- **Corpo RAW obrigatório** — o cálculo usa `{timestamp}.{body_json}`;
+  qualquer reserialização (reordenar chaves, mudar espaçamento) quebra a
+  assinatura. A rota precisa capturar o body como string antes de qualquer
+  `JSON.parse`.
+- **Comparação constant-time** — `crypto.timingSafeEqual`, nunca `===`.
+- **Timestamp/replay** — a documentação **não define** uma janela de
+  tolerância explícita; política própria (ex.: 5 min) fica para decidir na
+  implementação, não está pronta na doc.
+- **`x-access-token` é camada adicional opcional** — só se o painel tiver
+  `authToken` configurado; **não substitui** o HMAC.
+
+### 16.12 Idempotência — atualizado
+
+**Saída (Fluxy → ValidaPay) — resolvido, documentado:** campo `externalId`
+no `POST /v1/charges`. Reenvio com o mesmo `externalId` é recusado com
+`409 DUPLICATE_CHARGE`, retornando o `chargeId` da cobrança original.
+
+**Entrada (webhook → Fluxy) — `PaymentProviderEvent.idempotencyKey`, ainda
+em aberto.** Nenhum payload de webhook documentado tem um ID de evento
+próprio (`id`/`eventId`) — conferido em `subscription.created`,
+`subscription.trial`, `subscription.activated`, `subscription.renewed`,
+`subscription.canceled`, `subscription.cancel_scheduled`,
+`subscription.upgraded`, `subscription.item_added`, `charge.created`,
+`payment.success`, `payment.failed`, `payment.overdue`.
+
+Candidatos, **sem fechar a fórmula**:
+
+- `{event}:{chargeId}` — para eventos com `chargeId` no nível raiz.
+- `{event}:{subscriptionId}:{currentCycleNumber}` — para eventos só de
+  assinatura, sem `chargeId`.
+
+**Problema em aberto:** a documentação mostra **duas versões diferentes**
+do mesmo `payment.success` — uma "simples" (`chargeId`, `paymentId`,
+`payer.*`) e uma "enriquecida com assinatura" (sem `chargeId` no nível
+raiz, dados dentro de `currentCycle`, sem `paymentId`). A própria doc
+admite: _"Se o enrichment falhar, um payload simplificado é enviado."_ Não
+dá para fechar a fórmula sem ver qual das duas formas chega de verdade no
+request bin — pode até variar por execução.
+
+### 16.13 Estado desta fase (atualizado)
+
+- Nenhuma chamada de API foi feita nesta rodada — só leitura de
+  documentação pública (`docs.validapay.com.br`).
+- `POST /v1/subscriptions` **não será mais usado** como caminho de criação.
+- Ticket do `CBE041` (16.8) **suspenso**, não enviado.
+- Ainda **nenhum `chargeId` obtido** — próximo teste real é
+  `POST /v1/charges`.
+- `idempotencyKey` de entrada (webhook) **segue em aberto**.
+- F3a/F3b **continuam não implementadas**.
+- `Plan` **não atualizado**.
+- **Nenhuma migration** criada.
+- PostgreSQL **intocado**.
+- **Nenhum código alterado.**
 
 ---
 
