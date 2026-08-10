@@ -27,6 +27,7 @@ function plano(slug: string, mensal: string, anual: string): Plan {
 /** Repositório de mentira: devolve o que o teste mandar, sem tocar em banco. */
 function repositorioCom(planos: Plan[]): PlanRepository {
   return {
+    findById: async (id) => planos.find((p) => p.id === id) ?? null,
     findBySlug: async (slug) => planos.find((p) => p.slug === slug) ?? null,
     listPublic: async () => planos,
   };

@@ -1,6 +1,7 @@
 import type { Plan } from "@/lib/generated/prisma/client";
 
 export interface PlanRepository {
+  findById(id: string): Promise<Plan | null>;
   findBySlug(slug: string): Promise<Plan | null>;
   /**
    * Planos comercializáveis, na ordem de PUBLIC_PLAN_SLUGS.

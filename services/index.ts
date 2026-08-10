@@ -11,6 +11,8 @@ import { PrismaInvitationRepository } from "@/repositories/implementations/Prism
 import { PrismaReportRepository } from "@/repositories/implementations/PrismaReportRepository";
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
 import { PrismaPaymentRepository } from "@/repositories/implementations/PrismaPaymentRepository";
+import { PrismaSubscriptionCheckoutRepository } from "@/repositories/implementations/PrismaSubscriptionCheckoutRepository";
+import { validaPayCharges } from "@/lib/validapay/charges";
 import { AuditService } from "@/services/AuditService";
 import { AuthService } from "@/services/AuthService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
@@ -25,6 +27,7 @@ import { NotificationService } from "@/services/NotificationService";
 import { FinanceService } from "@/services/FinanceService";
 import { PlanLimitService } from "@/services/PlanLimitService";
 import { PlanCatalogService } from "@/services/PlanCatalogService";
+import { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -42,6 +45,7 @@ const invitationRepository = new PrismaInvitationRepository(prisma);
 const reportRepository = new PrismaReportRepository(prisma);
 const notificationRepository = new PrismaNotificationRepository(prisma);
 const paymentRepository = new PrismaPaymentRepository(prisma);
+const subscriptionCheckoutRepository = new PrismaSubscriptionCheckoutRepository(prisma);
 
 export const auditService = new AuditService(prisma);
 export const subscriptionGateService = new SubscriptionGateService();
@@ -110,6 +114,13 @@ export const orderAttachmentService = new OrderAttachmentService(
 export const stockService = new StockService(stockRepository, subscriptionGateService);
 
 export const reportService = new ReportService(reportRepository);
+
+export const subscriptionCheckoutService = new SubscriptionCheckoutService(
+  subscriptionCheckoutRepository,
+  planRepository,
+  companyRepository,
+  validaPayCharges,
+);
 
 export const teamService = new TeamService(
   userRepository,

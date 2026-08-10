@@ -645,12 +645,14 @@ Servidor parado e `fluxy_dev` reconferido: **579/579, zero divergências**.
 
 ---
 
-## 16. F3-DISCOVERY — checkpoint bloqueado (10/08/2026)
+## 16. F3-DISCOVERY — encerrada funcionalmente, uma lacuna (10/08/2026)
 
-> ⚠️ **`CBE041` suspenso como bloqueio principal — ver 16.9.** O endpoint que
-> disparou o erro (`POST /v1/subscriptions`) **não é** o endpoint documentado
-> de criação. F3-DISCOVERY segue sem `chargeId` obtido, agora aguardando o
-> primeiro teste pelo fluxo oficial (`POST /v1/charges`, seção 16.10).
+> ✅ **F3-DISCOVERY encerrada funcionalmente.** Fluxo oficial (`POST
+/v1/charges` → simulador → `charge PAID` / `subscription ACTIVE`)
+> confirmado ponta a ponta em sandbox — ver 16.14. **Lacuna única:** payload
+> real de webhook ainda não observado, porque **não existe webhook cadastrado**
+> na conta sandbox nova. `CBE041` (16.5/16.8) segue suspenso — não fazia parte
+> do fluxo correto (16.9).
 
 Exploração feita **fora do código** — chamadas diretas ao sandbox, sem
 persistir wrapper algum em `lib/validapay/`. Nenhum arquivo do repositório foi
@@ -1010,6 +1012,94 @@ request bin — pode até variar por execução.
 - **Nenhuma migration** criada.
 - PostgreSQL **intocado**.
 - **Nenhum código alterado.**
+
+### 16.14 `POST /v1/charges` confirmado ponta a ponta + simulador executado (10/08/2026)
+
+**Fluxo oficial confirmado com chamada real** (única, reaproveitada nas
+etapas seguintes) — `POST /v1/charges` funciona exatamente como a
+documentação descreve (16.10):
+
+- **Timeout do cliente não implica falha do servidor**: a 1ª chamada expirou
+  no lado do agente (10s) mas foi processada normalmente do lado da
+  ValidaPay.
+- **`externalId` + `409 DUPLICATE_CHARGE` funciona como documentado**: uma
+  2ª chamada com `externalId` diferente, mesmo `customer`/`priceId`, foi
+  recusada com `409` e devolveu o `chargeId` da cobrança original —
+  confirma que o mecanismo de idempotência de saída (16.12) é real, não só
+  teórico.
+- **`chargeId` obtido**: `SANDBOX_cha_1786386101742_e99sbfpxw`.
+- **`subscriptionId` correlacionado**: `sub_1786386098663_xf54x5394` — **não
+  veio na resposta síncrona do `POST`**, só via `GET /v1/charges/:chargeId`
+  e `GET /v1/subscriptions`, confirmando 16.10.
+- **`metadata` propagada**: o `discoveryId` enviado no `POST /v1/charges`
+  apareceu depois em `subscription.metadata`, inalterado, do início ao fim
+  do ciclo (criação → pagamento simulado).
+
+### Simulador oficial — executado uma vez
+
+```
+POST /v1/wallet/pay/:chargeId
+scope: wallet/write
+sem body
+```
+
+**Resposta imediata:**
+
+```json
+{
+  "chargeId": "SANDBOX_cha_1786386101742_e99sbfpxw",
+  "status": "PROCESSING",
+  "message": "Evento enviado para processamento"
+}
+```
+
+**O simulador é assíncrono** — não devolve `PAID` na hora, só confirma que
+entrou numa fila. A confirmação real só apareceu num `GET` alguns segundos
+depois. **Implicação para F3b:** a resposta do simulador (e, por extensão,
+do pagamento real) não pode ser tratada como confirmação — é preciso
+webhook ou polling.
+
+### Efeito observado (antes → depois)
+
+| Campo                                 | Antes      | Depois                                                |
+| ------------------------------------- | ---------- | ----------------------------------------------------- |
+| `charge.status`                       | `PENDING`  | **`PAID`**                                            |
+| `paidAt`                              | `null`     | preenchido (timestamp real do pagamento simulado)     |
+| `paidAmount`                          | —          | `29.9`                                                |
+| `paymentId` (End-to-End ID Pix)       | —          | preenchido                                            |
+| `subscription.status`                 | `PENDING`  | **`ACTIVE`**                                          |
+| `subscriptionId`                      | —          | **inalterado** — mesma assinatura, só mudou de estado |
+| `activatedAt`                         | `null`     | preenchido                                            |
+| `currentCycleNumber`                  | `1`        | `1` (inalterado)                                      |
+| `nextCycleNumber`                     | `null`     | `2`                                                   |
+| `nextCycleAmount`                     | `null`     | `29.9`                                                |
+| `nextCycleChargeDate`                 | —          | próximo mês, calculado automaticamente                |
+| `lastCharge.status` (na subscription) | —          | `PAID`                                                |
+| `metadata.discoveryId`                | preservado | **preservado, inalterado**                            |
+| `customer.ltv`                        | `0`        | `29.9`                                                |
+
+### Webhook — lacuna confirmada, não fechada
+
+- Request bin seguiu **sem nenhuma entrega real da ValidaPay** após o
+  pagamento simulado — consistente com **nenhum webhook cadastrado** na
+  conta sandbox nova (confirmado pelo usuário direto no painel).
+- O objeto do `charge`, pós-pagamento, passou a trazer um `log[]` com uma
+  entrada `{ entity: "pix-payment-in", webhookId: "..." }`. **Isso NÃO prova
+  entrega externa** — é, no máximo, evidência de que a ValidaPay gera o
+  evento internamente independente de haver um destino configurado.
+- **`idempotencyKey` de webhook (`PaymentProviderEvent.idempotencyKey`)
+  continua em aberto** — sem payload real de webhook, a fórmula não pode ser
+  fechada (ver proposta de estratégia segura na próxima seção do documento
+  de arquitetura F3a/F3b, fora deste arquivo de status).
+
+### Estado final da F3-DISCOVERY
+
+- `Plan.validapayPriceMonthlyId`/`validapayPriceYearlyId`: **não
+  atualizados**.
+- PostgreSQL: **intocado**.
+- **Nenhuma migration** criada.
+- F3a/F3b: **continuam não implementadas** — próxima etapa é avaliar a
+  proposta de arquitetura, não o código.
 
 ---
 
