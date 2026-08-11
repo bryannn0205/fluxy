@@ -75,6 +75,9 @@ function repositorioFalso(inicial: SubscriptionCheckout = checkout()) {
     async findByIdForCompany(id, companyId) {
       return id === linha.id && companyId === linha.companyId ? linha : null;
     },
+    async findByChargeId(chargeId) {
+      return linha.externalChargeId === chargeId ? linha : null;
+    },
     async attachChargeId(id, chargeId) {
       chamadas.attach++;
       // Condicional, como o UPDATE ... WHERE externalChargeId IS NULL.

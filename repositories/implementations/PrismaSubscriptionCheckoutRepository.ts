@@ -58,6 +58,12 @@ export class PrismaSubscriptionCheckoutRepository implements SubscriptionCheckou
     return this.prisma.subscriptionCheckout.findFirst({ where: { id, companyId } });
   }
 
+  async findByChargeId(externalChargeId: string): Promise<SubscriptionCheckout | null> {
+    return this.prisma.subscriptionCheckout.findUnique({
+      where: { provider_externalChargeId: { provider: PROVIDER, externalChargeId } },
+    });
+  }
+
   async attachChargeId(id: string, chargeId: string): Promise<SubscriptionCheckout> {
     await this.prisma.subscriptionCheckout.updateMany({
       where: { id, externalChargeId: null },

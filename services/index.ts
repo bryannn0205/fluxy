@@ -12,7 +12,9 @@ import { PrismaReportRepository } from "@/repositories/implementations/PrismaRep
 import { PrismaNotificationRepository } from "@/repositories/implementations/PrismaNotificationRepository";
 import { PrismaPaymentRepository } from "@/repositories/implementations/PrismaPaymentRepository";
 import { PrismaSubscriptionCheckoutRepository } from "@/repositories/implementations/PrismaSubscriptionCheckoutRepository";
+import { PrismaPaymentProviderEventRepository } from "@/repositories/implementations/PrismaPaymentProviderEventRepository";
 import { validaPayCharges } from "@/lib/validapay/charges";
+import { validaPaySubscriptions } from "@/lib/validapay/subscriptions";
 import { AuditService } from "@/services/AuditService";
 import { AuthService } from "@/services/AuthService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
@@ -28,6 +30,7 @@ import { FinanceService } from "@/services/FinanceService";
 import { PlanLimitService } from "@/services/PlanLimitService";
 import { PlanCatalogService } from "@/services/PlanCatalogService";
 import { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
+import { PaymentProviderEventService } from "@/services/PaymentProviderEventService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -46,6 +49,7 @@ const reportRepository = new PrismaReportRepository(prisma);
 const notificationRepository = new PrismaNotificationRepository(prisma);
 const paymentRepository = new PrismaPaymentRepository(prisma);
 const subscriptionCheckoutRepository = new PrismaSubscriptionCheckoutRepository(prisma);
+const paymentProviderEventRepository = new PrismaPaymentProviderEventRepository(prisma);
 
 export const auditService = new AuditService(prisma);
 export const subscriptionGateService = new SubscriptionGateService();
@@ -120,6 +124,14 @@ export const subscriptionCheckoutService = new SubscriptionCheckoutService(
   planRepository,
   companyRepository,
   validaPayCharges,
+);
+
+// Depois do checkout: o webhook é gatilho e delega a confirmação a ele.
+export const paymentProviderEventService = new PaymentProviderEventService(
+  paymentProviderEventRepository,
+  subscriptionCheckoutRepository,
+  subscriptionCheckoutService,
+  validaPaySubscriptions,
 );
 
 export const teamService = new TeamService(

@@ -44,6 +44,18 @@ const envSchema = z.object({
   VALIDAPAY_CLIENT_SECRET: z.string().optional(),
   VALIDAPAY_SCOPE: z.string().optional(),
 
+  // Segredo do HMAC do webhook, devolvido pela ValidaPay no cadastro da URL.
+  //
+  // **Opcional aqui, obrigatório na rota.** Opcional para que a aplicação suba
+  // sem ele, como as demais credenciais; mas a rota de webhook recusa TODA
+  // requisição enquanto estiver ausente — não existe modo permissivo. Ver
+  // lib/validapay/webhook-signature.ts.
+  //
+  // Distinto de VALIDAPAY_WEBHOOK_TOKEN: este assina a MENSAGEM (HMAC sobre o
+  // corpo), aquele apenas identifica o remetente (segredo portador).
+  VALIDAPAY_WEBHOOK_SECRET: z.string().optional(),
+  VALIDAPAY_WEBHOOK_TOKEN: z.string().optional(),
+
   // E-mail transacional — opcional; sem ele, e-mails são apenas logados.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Fluxy <naoresponda@fluxy.com.br>"),

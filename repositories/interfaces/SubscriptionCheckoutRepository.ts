@@ -53,6 +53,12 @@ export interface SubscriptionCheckoutRepository {
   findByIdForCompany(id: string, companyId: string): Promise<SubscriptionCheckout | null>;
 
   /**
+   * Correlação primária de um webhook: o `chargeId` do payload é o mesmo que
+   * gravamos ao criar a cobrança. Escopado ao provedor, como o índice único.
+   */
+  findByChargeId(externalChargeId: string): Promise<SubscriptionCheckout | null>;
+
+  /**
    * Grava o `chargeId` **somente se ainda não houver um**.
    *
    * N chamadas concorrentes de criação usam o mesmo `externalId` e convergem
