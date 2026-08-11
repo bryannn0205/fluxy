@@ -78,6 +78,9 @@ function repositorioFalso(inicial: SubscriptionCheckout = checkout()) {
     async findByChargeId(chargeId) {
       return linha.externalChargeId === chargeId ? linha : null;
     },
+    async listPendingWithCharge() {
+      return linha.status === "PENDING" && linha.externalChargeId !== null ? [linha] : [];
+    },
     async attachChargeId(id, chargeId) {
       chamadas.attach++;
       // Condicional, como o UPDATE ... WHERE externalChargeId IS NULL.

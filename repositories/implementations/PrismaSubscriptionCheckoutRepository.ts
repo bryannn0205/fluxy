@@ -3,6 +3,7 @@ import type {
   ActivateIfPendingInput,
   FindOrCreatePendingInput,
   FindOrCreatePendingResult,
+  ListPendingWithChargeInput,
   SubscriptionCheckoutRepository,
 } from "@/repositories/interfaces/SubscriptionCheckoutRepository";
 
@@ -56,6 +57,21 @@ export class PrismaSubscriptionCheckoutRepository implements SubscriptionCheckou
     companyId: string,
   ): Promise<SubscriptionCheckout | null> {
     return this.prisma.subscriptionCheckout.findFirst({ where: { id, companyId } });
+  }
+
+  async listPendingWithCharge(
+    input: ListPendingWithChargeInput,
+  ): Promise<SubscriptionCheckout[]> {
+    return this.prisma.subscriptionCheckout.findMany({
+      where: {
+        provider: PROVIDER,
+        companyId: input.companyId,
+        status: "PENDING",
+        externalChargeId: { not: null },
+      },
+      orderBy: { createdAt: "asc" },
+      take: input.limit,
+    });
   }
 
   async findByChargeId(externalChargeId: string): Promise<SubscriptionCheckout | null> {

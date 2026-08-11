@@ -31,6 +31,7 @@ import { PlanLimitService } from "@/services/PlanLimitService";
 import { PlanCatalogService } from "@/services/PlanCatalogService";
 import { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
 import { PaymentProviderEventService } from "@/services/PaymentProviderEventService";
+import { SubscriptionReconciliationService } from "@/services/SubscriptionReconciliationService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -124,6 +125,13 @@ export const subscriptionCheckoutService = new SubscriptionCheckoutService(
   planRepository,
   companyRepository,
   validaPayCharges,
+);
+
+// Terceiro caminho até a MESMA confirmação, ao lado de webhook e polling:
+// recuperação operacional para tentativas que ficaram sem desfecho.
+export const subscriptionReconciliationService = new SubscriptionReconciliationService(
+  subscriptionCheckoutRepository,
+  subscriptionCheckoutService,
 );
 
 // Depois do checkout: o webhook é gatilho e delega a confirmação a ele.

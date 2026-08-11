@@ -23,6 +23,20 @@ export interface FindOrCreatePendingResult {
   reused: boolean;
 }
 
+export interface ListPendingWithChargeInput {
+  /**
+   * Escopo de tenant — **obrigatório**, como em toda query deste projeto.
+   *
+   * Não é opcional de propósito: ausência de escopo significaria "todos os
+   * tenants" por omissão, e uma chamada que esquecesse o campo varreria o
+   * banco inteiro sem que nada acusasse. Uma varredura de plataforma, se um
+   * dia existir, precisa de método próprio com nome que diga isso.
+   */
+  companyId: string;
+  /** Teto de itens por execução. Cada item custa uma chamada externa. */
+  limit: number;
+}
+
 export interface ActivateIfPendingInput {
   subscriptionCheckoutId: string;
   companyId: string;
@@ -72,6 +86,18 @@ export interface SubscriptionCheckoutRepository {
   attachChargeId(id: string, chargeId: string): Promise<SubscriptionCheckout>;
 
   markFailed(id: string): Promise<void>;
+
+  /**
+   * Tentativas que já têm cobrança mas seguem sem desfecho.
+   *
+   * `externalChargeId IS NOT NULL` não é filtro de conveniência: sem ele não há
+   * o que consultar na ValidaPay, e a linha entraria no lote só para ser
+   * descartada. Ordem por `createdAt ASC` — a mais antiga é a que espera há
+   * mais tempo.
+   */
+  listPendingWithCharge(
+    input: ListPendingWithChargeInput,
+  ): Promise<SubscriptionCheckout[]>;
 
   /**
    * Claim atômico da ativação, numa única transação.
