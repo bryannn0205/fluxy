@@ -73,6 +73,39 @@ describe("criação de cobrança", () => {
       chargeId: "cha_1",
       customerId: "cus_1",
       duplicated: false,
+      // Resposta sem bloco `pix`: nada a exibir, e nada inventado no lugar.
+      pix: null,
+    });
+  });
+
+  it("expõe o Pix da criação para exibição", async () => {
+    mockarEnv();
+    const fetchFalso = vi
+      .fn()
+      .mockResolvedValueOnce(json(TOKEN))
+      .mockResolvedValueOnce(
+        json({
+          chargeId: "cha_1",
+          customerId: "cus_1",
+          pix: {
+            emv: "emv-sintetico-de-teste",
+            qrCode: "data:image/png;base64,iVBORw0=",
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchFalso);
+
+    const { validaPayCharges } = await import("@/lib/validapay/charges");
+    const resultado = await validaPayCharges.createPixCharge({
+      externalId: "fluxy-checkout-abc",
+      priceId: "price_1",
+      customer: CLIENTE,
+      metadata: { subscriptionCheckoutId: "abc" },
+    });
+
+    expect(resultado.pix).toEqual({
+      emv: "emv-sintetico-de-teste",
+      qrCodeImage: "data:image/png;base64,iVBORw0=",
     });
   });
 
@@ -130,6 +163,9 @@ describe("criação de cobrança", () => {
     // no mesmo chargeId, nunca abrir uma segunda cobrança.
     expect(resultado.chargeId).toBe("cha_original");
     expect(resultado.duplicated).toBe(true);
+    // A resposta de ERRO não carrega o Pix — quem precisa exibir consulta a
+    // cobrança original. Inventar um código aqui seria pior que devolver null.
+    expect(resultado.pix).toBeNull();
   });
 
   it("409 sem chargeId legível sobe como erro — não inventa identificador", async () => {
@@ -206,6 +242,48 @@ describe("consulta de cobrança", () => {
     // A consulta chama de endToEndId o que o webhook chama de paymentId.
     expect(cobranca.paymentId).toBe("E123");
     expect(cobranca.paidAt?.toISOString()).toBe("2026-08-10T18:34:06.981Z");
+  });
+
+  it("expõe o Pix da consulta, sob qualquer um dos nomes da API", async () => {
+    mockarEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json(TOKEN))
+        .mockResolvedValueOnce(
+          json({ chargeId: "cha_1", status: "PENDING", emvQrCode: "emv-do-topo" }),
+        ),
+    );
+
+    const { validaPayCharges } = await import("@/lib/validapay/charges");
+
+    // É por aqui que a recuperação por 409 recupera o código para exibir.
+    expect((await validaPayCharges.getCharge("cha_1")).pix).toEqual({
+      emv: "emv-do-topo",
+      qrCodeImage: null,
+    });
+  });
+
+  it("aceita o Pix aninhado em paymentDetails", async () => {
+    mockarEnv();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json(TOKEN))
+        .mockResolvedValueOnce(
+          json({
+            chargeId: "cha_1",
+            status: "PENDING",
+            paymentDetails: { emvQrCode: "emv-aninhado" },
+          }),
+        ),
+    );
+
+    const { validaPayCharges } = await import("@/lib/validapay/charges");
+
+    expect((await validaPayCharges.getCharge("cha_1")).pix?.emv).toBe("emv-aninhado");
   });
 
   it("PENDING não é pago", async () => {

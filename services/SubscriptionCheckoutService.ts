@@ -1,13 +1,19 @@
 import type {
+  BillingInterval,
   Company,
   Plan,
   Role,
   SubscriptionCheckoutStatus,
 } from "@/lib/generated/prisma/client";
-import { ValidationError } from "@/lib/errors";
+import { NotFoundError, ValidationError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { assertPermission } from "@/lib/permissions";
-import type { ChargeCustomer, ValidaPayChargesGateway } from "@/lib/validapay/charges";
+import type {
+  ChargeCustomer,
+  ChargeSnapshot,
+  PixPaymentData,
+  ValidaPayChargesGateway,
+} from "@/lib/validapay/charges";
 import { ValidaPayRequestError, ValidaPayTimeoutError } from "@/lib/validapay/errors";
 import type { CompanyRepository } from "@/repositories/interfaces/CompanyRepository";
 import type { PlanRepository } from "@/repositories/interfaces/PlanRepository";
@@ -35,10 +41,20 @@ const PREFIXO_EXTERNAL_ID = "fluxy-checkout-";
 
 type CompanyComPapel = Company & { role: Role };
 
+export interface PlanoParaCheckout {
+  planId: string;
+  name: string;
+  billingInterval: BillingInterval;
+  valor: number;
+  disponivelParaContratacao: boolean;
+}
+
 export interface CheckoutResumo {
   checkoutId: string;
   chargeId: string | null;
   status: SubscriptionCheckoutStatus;
+  /** Só para exibição. `null` quando ainda não há cobrança ou já foi paga. */
+  pix: PixPaymentData | null;
 }
 
 /**
@@ -112,7 +128,7 @@ export class SubscriptionCheckoutService {
     }
 
     if (checkout.externalChargeId) {
-      return resumo(checkout.id, checkout.externalChargeId, checkout.status);
+      return resumo(checkout.id, checkout.externalChargeId, checkout.status, null);
     }
 
     const [plano, company] = await Promise.all([
@@ -160,7 +176,112 @@ export class SubscriptionCheckoutService {
       resultado.chargeId,
     );
 
-    return resumo(atualizado.id, atualizado.externalChargeId, atualizado.status);
+    // Recuperação por 409 não traz o Pix — a resposta de erro não o carrega.
+    // Buscar aqui evita devolver uma tela de pagamento sem código para pagar.
+    const pix =
+      resultado.pix ??
+      (resultado.duplicated ? await this.buscarPix(resultado.chargeId) : null);
+
+    return resumo(atualizado.id, atualizado.externalChargeId, atualizado.status, pix);
+  }
+
+  /**
+   * Estado da tentativa para a TELA, escopado à empresa da sessão.
+   *
+   * Faz **uma** chamada externa e a reaproveita para as duas coisas que a tela
+   * precisa: confirmar autoritativamente (e ativar, se pago) e obter o Pix
+   * para exibir. Consultar duas vezes seria pagar dobrado pela mesma verdade.
+   *
+   * @throws {NotFoundError} tentativa inexistente OU de outra empresa — a
+   *         distinção não é feita de propósito: dizer "existe, mas não é sua"
+   *         confirmaria a existência de um registro alheio.
+   */
+  async consultarParaExibicao(
+    subscriptionCheckoutId: string,
+    companyId: string,
+  ): Promise<CheckoutResumo> {
+    const checkout = await this.repository.findByIdForCompany(
+      subscriptionCheckoutId,
+      companyId,
+    );
+    if (!checkout) {
+      throw new NotFoundError("Tentativa de contratação");
+    }
+
+    // Sem cobrança ou já resolvida: não há o que consultar lá fora.
+    if (checkout.status !== "PENDING" || !checkout.externalChargeId) {
+      return resumo(checkout.id, checkout.externalChargeId, checkout.status, null);
+    }
+
+    const cobranca = await this.charges.getCharge(checkout.externalChargeId);
+    const ativou = await this.aplicarConfirmacao(checkout, cobranca);
+
+    return resumo(
+      checkout.id,
+      checkout.externalChargeId,
+      ativou ? "COMPLETED" : checkout.status,
+      // Cobrança paga não precisa mais de código para pagar.
+      cobranca.paid ? null : cobranca.pix,
+    );
+  }
+
+  /**
+   * Dados do plano para a tela de contratação.
+   *
+   * A disponibilidade sai daqui, e não da página, porque a regra é a mesma que
+   * `iniciarCheckout` aplica: sem `priceId` remoto não há como cobrar. Duas
+   * cópias divergiriam no dia em que a regra mudasse — e a tela ofereceria um
+   * botão que o service recusaria.
+   */
+  async descreverPlanoParaCheckout(
+    slug: string,
+    intervalo: BillingInterval,
+  ): Promise<PlanoParaCheckout | null> {
+    const plano = await this.planRepository.findBySlug(slug);
+    if (!plano) return null;
+
+    const anual = intervalo === "YEARLY";
+    const priceIdRemoto = anual
+      ? plano.validapayPriceYearlyId
+      : plano.validapayPriceMonthlyId;
+
+    return {
+      planId: plano.id,
+      name: plano.name,
+      billingInterval: intervalo,
+      // `Decimal` vira número só aqui, para formatação — nunca para cálculo.
+      valor: Number(anual ? plano.priceYearly : plano.priceMonthly),
+      disponivelParaContratacao: priceIdRemoto !== null,
+    };
+  }
+
+  /**
+   * Garante que a tentativa é da empresa informada, antes de qualquer chamada
+   * externa.
+   *
+   * @throws {NotFoundError} inexistente OU de outra empresa
+   */
+  async exigirTentativaDaEmpresa(
+    subscriptionCheckoutId: string,
+    companyId: string,
+  ): Promise<void> {
+    const checkout = await this.repository.findByIdForCompany(
+      subscriptionCheckoutId,
+      companyId,
+    );
+    if (!checkout) {
+      throw new NotFoundError("Tentativa de contratação");
+    }
+  }
+
+  private async buscarPix(chargeId: string): Promise<PixPaymentData | null> {
+    try {
+      return (await this.charges.getCharge(chargeId)).pix;
+    } catch {
+      // O `chargeId` já está gravado; ficar sem o código para exibir é
+      // recuperável pela própria tela, e falhar aqui perderia essa gravação.
+      return null;
+    }
   }
 
   /**
@@ -179,6 +300,21 @@ export class SubscriptionCheckoutService {
     }
 
     const cobranca = await this.charges.getCharge(checkout.externalChargeId);
+
+    return this.aplicarConfirmacao(checkout, cobranca);
+  }
+
+  /**
+   * Decide e ativa a partir de um snapshot JÁ obtido.
+   *
+   * Separado de `confirmarSeChargePago` para que a tela consulte a cobrança
+   * uma vez só. **Toda a regra de ativação vive aqui** — webhook, polling e
+   * reconciliação convergem neste método, e não em três cópias dele.
+   */
+  private async aplicarConfirmacao(
+    checkout: { id: string; companyId: string; intendedPlanId: string },
+    cobranca: ChargeSnapshot,
+  ): Promise<boolean> {
     if (!cobranca.paid) return false;
 
     const ativou = await this.repository.activateIfPending({
@@ -227,8 +363,9 @@ function resumo(
   checkoutId: string,
   chargeId: string | null,
   status: SubscriptionCheckoutStatus,
+  pix: PixPaymentData | null,
 ): CheckoutResumo {
-  return { checkoutId, chargeId, status };
+  return { checkoutId, chargeId, status, pix };
 }
 
 /**

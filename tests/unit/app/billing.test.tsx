@@ -145,11 +145,11 @@ describe("plano atual", () => {
     render(<PlanComparison plans={PLANOS} currentPlanSlug="standard" />);
 
     expect(
-      screen.queryByRole("button", { name: /contratar fluxy standard/i }),
+      screen.queryByRole("link", { name: /contratar fluxy standard/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("É o plano que sua empresa usa hoje.")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /contratar fluxy pro/i }),
+      screen.getByRole("link", { name: /contratar fluxy pro/i }),
     ).toBeInTheDocument();
   });
 
@@ -191,31 +191,28 @@ describe("plano atual", () => {
   });
 });
 
-describe("o CTA de contratar não contrata", () => {
-  it("revela um aviso e nada mais", async () => {
-    const usuario = userEvent.setup();
+describe("o CTA de contratar apenas NAVEGA", () => {
+  it("leva à tela de pagamento com plano e periodicidade", () => {
     render(<PlanComparison plans={PLANOS} currentPlanSlug="standard" />);
 
-    const aviso = document.getElementById("aviso-de-contratacao")!;
-    expect(aviso).toHaveAttribute("hidden");
-
-    await usuario.click(screen.getByRole("button", { name: /contratar fluxy pro/i }));
-
-    expect(aviso).not.toHaveAttribute("hidden");
-    expect(aviso).toHaveTextContent("Pagamento online em breve");
-    expect(aviso).toHaveTextContent("Nenhuma alteração foi feita na sua assinatura");
+    // Link, não botão com efeito: a contratação acontece na tela de destino,
+    // que relê preço e disponibilidade do banco.
+    expect(screen.getByRole("link", { name: /contratar fluxy pro/i })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/billing/checkout?plan=pro&interval=MONTHLY",
+    );
   });
 
-  it("o botão declara o que controla, para leitores de tela", async () => {
+  it("a periodicidade escolhida viaja no link", async () => {
     const usuario = userEvent.setup();
     render(<PlanComparison plans={PLANOS} currentPlanSlug="standard" />);
-    const botao = screen.getByRole("button", { name: /contratar fluxy pro/i });
 
-    expect(botao).toHaveAttribute("aria-expanded", "false");
-    expect(botao).toHaveAttribute("aria-controls", "aviso-de-contratacao");
+    await usuario.click(screen.getByRole("radio", { name: /anual/i }));
 
-    await usuario.click(botao);
-    expect(botao).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: /contratar fluxy pro/i })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/billing/checkout?plan=pro&interval=YEARLY",
+    );
   });
 
   it("não existe formulário, action ou mutação no componente", () => {

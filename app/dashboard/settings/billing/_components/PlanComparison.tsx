@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Info } from "lucide-react";
+import Link from "next/link";
+import { Check } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { BillingToggle } from "@/components/common/BillingToggle";
 import { PlanFeatures, PlanPrice } from "@/components/common/PlanFacts";
 import { type BillingInterval } from "@/lib/constants";
@@ -26,14 +27,13 @@ interface PlanComparisonProps {
 /**
  * Comparação de planos dentro da área autenticada.
  *
- * Client Component pelo alternador e pelo aviso do botão — nada mais. **Não
- * existe action aqui.** Nenhum caminho deste arquivo escreve no banco, altera
- * assinatura, cria pagamento ou toca em `Company.planId`: o botão de contratar
- * revela um texto e só.
+ * Client Component pelo alternador — nada mais. **Não existe action aqui.**
+ * Nenhum caminho deste arquivo escreve no banco, altera assinatura, cria
+ * pagamento ou toca em `Company.planId`: contratar é um link para a tela de
+ * pagamento, que decide disponibilidade no servidor.
  */
 export function PlanComparison({ plans, currentPlanSlug }: PlanComparisonProps) {
   const [cobranca, setCobranca] = useState<BillingInterval>("monthly");
-  const [avisoVisivel, setAvisoVisivel] = useState(false);
 
   if (plans.length === 0) {
     return (
@@ -83,15 +83,16 @@ export function PlanComparison({ plans, currentPlanSlug }: PlanComparisonProps) 
                       É o plano que sua empresa usa hoje.
                     </p>
                   ) : (
-                    <Button
-                      type="button"
-                      onClick={() => setAvisoVisivel(true)}
-                      aria-expanded={avisoVisivel}
-                      aria-controls="aviso-de-contratacao"
-                      className="w-full"
+                    // A periodicidade escolhida no alternador viaja na URL; a
+                    // tela de destino relê preço e disponibilidade do banco.
+                    <Link
+                      href={`/dashboard/settings/billing/checkout?plan=${plano.slug}&interval=${
+                        cobranca === "yearly" ? "YEARLY" : "MONTHLY"
+                      }`}
+                      className={cn(buttonVariants(), "w-full")}
                     >
                       Contratar {plano.name}
-                    </Button>
+                    </Link>
                   )}
                 </CardContent>
               </Card>
@@ -99,25 +100,6 @@ export function PlanComparison({ plans, currentPlanSlug }: PlanComparisonProps) 
           );
         })}
       </ul>
-
-      {/* Sempre no DOM para aria-controls ter alvo válido; `hidden` controla a
-          exibição. O texto é deliberadamente explícito sobre o que NÃO houve —
-          um botão de contratar que não contrata precisa dizer isso. */}
-      <div
-        id="aviso-de-contratacao"
-        hidden={!avisoVisivel}
-        role="status"
-        className="flex items-start gap-2.5 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm"
-      >
-        <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-        <p>
-          <span className="font-medium">Pagamento online em breve.</span>{" "}
-          <span className="text-muted-foreground">
-            O upgrade será concluído pela etapa de pagamento, ainda não disponível.
-            Nenhuma alteração foi feita na sua assinatura.
-          </span>
-        </p>
-      </div>
     </div>
   );
 }

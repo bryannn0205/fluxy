@@ -33,6 +33,20 @@ export interface CreatePixChargeInput {
   readonly metadata: Readonly<Record<string, string>>;
 }
 
+/**
+ * Dados de pagamento Pix, para EXIBIÇÃO apenas.
+ *
+ * Trafegam do gateway até a tela e morrem ali. **Nunca são persistidos nem
+ * logados**: o `emv` é o código que move dinheiro, e um log de aplicação não é
+ * lugar para ele. Ver a redação em `lib/logger.ts` e os testes de auditoria.
+ */
+export interface PixPaymentData {
+  /** Copia-e-cola. */
+  readonly emv: string;
+  /** Imagem do QR em data URI, quando a API a devolve. */
+  readonly qrCodeImage: string | null;
+}
+
 export interface CreateChargeResult {
   readonly chargeId: string;
   readonly customerId: string | null;
@@ -42,6 +56,12 @@ export interface CreateChargeResult {
    * distinção existe só para observabilidade.
    */
   readonly duplicated: boolean;
+  /**
+   * `null` na recuperação por `409`: a resposta de erro não traz o Pix. Quem
+   * precisa exibir consulta `getCharge`, que devolve o `emv` da cobrança
+   * original.
+   */
+  readonly pix: PixPaymentData | null;
 }
 
 export interface ChargeSnapshot {
@@ -53,6 +73,12 @@ export interface ChargeSnapshot {
   readonly subscriptionId: string | null;
   readonly paymentId: string | null;
   readonly paidAt: Date | null;
+  /**
+   * Pix da cobrança, para exibição. É o que permite reabrir a tela de
+   * pagamento sem criar nada — e o que a recuperação por `409` usa, já que a
+   * resposta de erro não traz o código.
+   */
+  readonly pix: PixPaymentData | null;
 }
 
 export interface ValidaPayChargesGateway {
@@ -65,6 +91,7 @@ const STATUS_PAGO = "PAID";
 interface RespostaDeCriacao {
   chargeId?: unknown;
   customerId?: unknown;
+  pix?: { emv?: unknown; qrCode?: unknown } | null;
 }
 
 interface RespostaDeConsulta {
@@ -75,6 +102,8 @@ interface RespostaDeConsulta {
   paymentId?: unknown;
   endToEndId?: unknown;
   paidAt?: unknown;
+  emvQrCode?: unknown;
+  paymentDetails?: { emvQrCode?: unknown } | null;
 }
 
 async function createPixCharge(input: CreatePixChargeInput): Promise<CreateChargeResult> {
@@ -95,7 +124,7 @@ async function createPixCharge(input: CreatePixChargeInput): Promise<CreateCharg
   } catch (erro) {
     const duplicado = extrairChargeIdDuplicado(erro);
     if (duplicado) {
-      return { chargeId: duplicado, customerId: null, duplicated: true };
+      return { chargeId: duplicado, customerId: null, duplicated: true, pix: null };
     }
     throw erro;
   }
@@ -107,7 +136,12 @@ async function createPixCharge(input: CreatePixChargeInput): Promise<CreateCharg
     throw new ValidaPayRequestError(200, "/v1/charges", "resposta sem chargeId");
   }
 
-  return { chargeId, customerId: texto(resposta.customerId), duplicated: false };
+  return {
+    chargeId,
+    customerId: texto(resposta.customerId),
+    duplicated: false,
+    pix: montarPix(texto(resposta.pix?.emv), texto(resposta.pix?.qrCode)),
+  };
 }
 
 async function getCharge(chargeId: string): Promise<ChargeSnapshot> {
@@ -127,7 +161,20 @@ async function getCharge(chargeId: string): Promise<ChargeSnapshot> {
     // mesmo dado de `paymentId`. Quem consome não deveria conhecer os dois nomes.
     paymentId: texto(resposta.paymentId) ?? texto(resposta.endToEndId),
     paidAt: data(resposta.paidAt),
+    // A consulta expõe o mesmo código em dois lugares; a criação chama de
+    // `pix.emv`. Quem consome não deveria conhecer os três nomes.
+    pix: montarPix(
+      texto(resposta.emvQrCode) ?? texto(resposta.paymentDetails?.emvQrCode),
+      null,
+    ),
   };
+}
+
+function montarPix(
+  emv: string | null,
+  qrCodeImage: string | null,
+): PixPaymentData | null {
+  return emv === null ? null : { emv, qrCodeImage };
 }
 
 export const validaPayCharges: ValidaPayChargesGateway = { createPixCharge, getCharge };

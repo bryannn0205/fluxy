@@ -132,6 +132,7 @@ function gateway(overrides: Partial<ValidaPayChargesGateway> = {}) {
       chargeId: "cha_1",
       customerId: "cus_1",
       duplicated: false,
+      pix: { emv: "emv-sintetico-de-teste", qrCodeImage: null },
     })),
     getCharge: vi.fn(async () => ({
       chargeId: "cha_1",
@@ -140,6 +141,7 @@ function gateway(overrides: Partial<ValidaPayChargesGateway> = {}) {
       subscriptionId: null,
       paymentId: null,
       paidAt: null,
+      pix: { emv: "emv-sintetico-de-teste", qrCodeImage: null },
     })),
   };
   return { ...base, ...overrides };
@@ -386,9 +388,15 @@ describe("garantirChargeCriado", () => {
       createPixCharge: vi.fn(async () => {
         if (primeira) {
           primeira = false;
-          return { chargeId: "cha_unico", customerId: "cus_1", duplicated: false };
+          return {
+            chargeId: "cha_unico",
+            customerId: "cus_1",
+            duplicated: false,
+            pix: { emv: "emv-sintetico-de-teste", qrCodeImage: null },
+          };
         }
-        return { chargeId: "cha_unico", customerId: null, duplicated: true };
+        // Recuperação por 409 não traz Pix — a resposta de erro não o carrega.
+        return { chargeId: "cha_unico", customerId: null, duplicated: true, pix: null };
       }),
     });
     const service = new SubscriptionCheckoutService(
@@ -415,6 +423,7 @@ describe("confirmarSeChargePago", () => {
     subscriptionId: "sub_1",
     paymentId: "E123",
     paidAt: new Date("2026-08-10T18:34:06.981Z"),
+    pix: null,
   };
 
   it("consulta o charge como fonte autoritativa e ativa quando PAID", async () => {
