@@ -1,14 +1,17 @@
 # Estado da integração ValidaPay — documento de continuidade
 
-**Atualizado em:** 10/08/2026
+**Atualizado em:** 14/08/2026
 **Propósito:** permitir retomar o trabalho numa conversa nova, sem depender do histórico anterior.
 
 > **Onde paramos:** ✅ **Migração local para PostgreSQL 18 FINALIZADA.**
 > O desenvolvimento roda em `localhost:5432/fluxy_dev` com a role `fluxy`; os
 > testes, isolados em `fluxy_test`. O `prisma dev` está aposentado.
-> **F3 (checkout ValidaPay) ainda NÃO foi iniciada.**
-> Ver seções 12 a 15 para a migração, 16 para o checkpoint bloqueado da
-> F3-DISCOVERY e 18 para o prompt de retomada.
+> **F3 (checkout ValidaPay) ENCERRADA TECNICAMENTE para sandbox/MVP** —
+> fluxo completo comprovado ponta a ponta com webhook real em produção
+> (seção 16.15). Produtos/preços comerciais definitivos ainda não existem;
+> pagamento real ainda não está habilitado.
+> Ver seções 12 a 15 para a migração, 16 para o histórico da F3-DISCOVERY
+> (16.15 para o fechamento) e 18 para o prompt de retomada.
 
 ---
 
@@ -1101,6 +1104,41 @@ webhook ou polling.
 - F3a/F3b: **continuam não implementadas** — próxima etapa é avaliar a
   proposta de arquitetura, não o código.
 
+### 16.15 F3-3C3 — webhook real em produção, ponta a ponta (14/08/2026)
+
+**F3 encerrada tecnicamente para sandbox/MVP.** Fluxo completo comprovado com
+dado real, não simulado:
+
+- Webhook real da ValidaPay **chegou** na Vercel de produção
+  (`POST /api/webhooks/validapay`).
+- Assinatura **HMAC aceita** — os eventos foram persistidos, o que só
+  acontece depois da verificação passar (assinatura inválida recusa antes de
+  qualquer gravação).
+- `PaymentProviderEvent` **persistiu** os eventos reais, com `payloadHash`
+  presente e `rawBody` nunca gravado (a tabela não tem coluna para isso).
+- A migration de produção estava **atrasada em 1 de 9** (faltava
+  `20260807205953_validapay_integration`, a que cria `SubscriptionCheckout`
+  e `PaymentProviderEvent`) — aplicada via `prisma migrate deploy` pelo
+  mecanismo já documentado do projeto. Hoje: **9/9**.
+- As credenciais `VALIDAPAY_CLIENT_ID`/`VALIDAPAY_CLIENT_SECRET`/
+  `VALIDAPAY_SCOPE` foram adicionadas à Vercel — antes só
+  `VALIDAPAY_WEBHOOK_SECRET` estava configurado, o que bloqueava a etapa de
+  confirmação (a correlação/`GET /v1/charges` precisa autenticar de volta na
+  ValidaPay).
+- **3 eventos `PENDING` de um ciclo anterior** (`charge.created`,
+  `payment.success`, `subscription.activated`, todos do mesmo `chargeId`
+  sintético) ficaram presos na janela em que a Vercel ainda não tinha as
+  três credenciais acima. **Decisão: não reprocessar.** São artefatos de
+  teste sintético, sem mecanismo de reprocessamento sem nova entrega (o
+  `rawBody` não é persistido, de propósito), e sem impacto — nenhuma
+  `Company` real foi ou seria alterada por eles.
+- **Nenhuma `Company` real foi alterada** em nenhum momento desta fase.
+- **Política de retentativa/reentrega da ValidaPay continua não
+  documentada** — e agora também **não observada na prática**: os 3 eventos
+  acima receberam `500` (tabela ausente) e a ValidaPay não os reenviou
+  depois que o schema foi corrigido. Tratar toda entrega como
+  potencialmente única, nunca garantida.
+
 ---
 
 ## 17. Proibições vigentes
@@ -1144,10 +1182,10 @@ Estado: 579 linhas migradas e equivalentes ao backup, 9 migrations,
 628/628 testes, type-check, lint e build limpos, aplicação sobe e serve
 o catálogo migrado.
 
-F3 (checkout ValidaPay) ainda NÃO foi iniciada — é o próximo trabalho de
-produto, quando eu autorizar. A F3-DISCOVERY está bloqueada aguardando a
-ValidaPay corrigir o erro CBE041 (seção 16). Respeite integralmente as
-proibições da seção 17.
+F3 (checkout ValidaPay) está ENCERRADA TECNICAMENTE para sandbox/MVP —
+webhook real validado em produção, ponta a ponta (seção 16.15). Falta só
+a etapa comercial: produtos/preços definitivos e habilitar pagamento real,
+quando eu autorizar. Respeite integralmente as proibições da seção 17.
 
 Não faça commit sem minha autorização.
 ```
