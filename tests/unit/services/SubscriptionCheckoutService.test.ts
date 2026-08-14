@@ -523,3 +523,165 @@ describe("confirmarSeChargePago", () => {
     );
   });
 });
+
+/**
+ * Roteamento de preço: quatro combinações, e as trocas que seriam invisíveis.
+ *
+ * Identificadores SINTÉTICOS de propósito. O que pode quebrar aqui é a lógica
+ * — inverter mensal com anual, ou ler o campo do outro plano —, e isso se prova
+ * sem acoplar o teste a um recurso de sandbox que muda por ação externa. Que o
+ * BANCO contém o mapeamento aprovado é outra afirmação, verificada contra o
+ * banco real por `prisma/set-validapay-price-ids.ts`; um teste que gravasse os
+ * IDs e depois os relesse estaria conferindo o próprio fixture.
+ */
+describe("roteamento de priceId por plano e periodicidade", () => {
+  const STANDARD: Plan = {
+    ...PLANO,
+    id: "plan_standard",
+    slug: "standard",
+    name: "Fluxy Standard",
+    priceMonthly: new Prisma.Decimal("29"),
+    priceYearly: new Prisma.Decimal("290"),
+    validapayPriceMonthlyId: "price_standard_mensal",
+    validapayPriceYearlyId: "price_standard_anual",
+  };
+
+  const PRO: Plan = {
+    ...PLANO,
+    id: "plan_pro",
+    slug: "pro",
+    name: "Fluxy Pro",
+    priceMonthly: new Prisma.Decimal("89"),
+    priceYearly: new Prisma.Decimal("890"),
+    validapayPriceMonthlyId: "price_pro_mensal",
+    validapayPriceYearlyId: "price_pro_anual",
+  };
+
+  const CATALOGO: PlanRepository = {
+    findById: async (id) => [STANDARD, PRO].find((p) => p.id === id) ?? null,
+    findBySlug: async (slug) => [STANDARD, PRO].find((p) => p.slug === slug) ?? null,
+    listPublic: async () => [STANDARD, PRO],
+  };
+
+  async function priceIdEnviado(planId: string, billingInterval: "MONTHLY" | "YEARLY") {
+    const ambienteLocal = repositorioFalso(checkout({ intendedPlanId: planId }));
+    const charges = gateway();
+    const service = new SubscriptionCheckoutService(
+      ambienteLocal.repo,
+      CATALOGO,
+      empresas(),
+      charges,
+    );
+
+    await service.iniciarCheckout({ planId, billingInterval }, EMPRESA);
+
+    const [entrada] = (charges.createPixCharge as ReturnType<typeof vi.fn>).mock
+      .calls[0]!;
+    return (entrada as { priceId: string }).priceId;
+  }
+
+  it.each([
+    ["Standard", "MONTHLY", "plan_standard", "price_standard_mensal"],
+    ["Standard", "YEARLY", "plan_standard", "price_standard_anual"],
+    ["Pro", "MONTHLY", "plan_pro", "price_pro_mensal"],
+    ["Pro", "YEARLY", "plan_pro", "price_pro_anual"],
+  ] as const)(
+    "%s %s usa o preço correspondente",
+    async (_p, intervalo, planId, esperado) => {
+      await expect(priceIdEnviado(planId, intervalo)).resolves.toBe(esperado);
+    },
+  );
+
+  it("mensal NUNCA usa o preço anual", async () => {
+    for (const [planId, anual] of [
+      ["plan_standard", "price_standard_anual"],
+      ["plan_pro", "price_pro_anual"],
+    ]) {
+      await expect(priceIdEnviado(planId!, "MONTHLY")).resolves.not.toBe(anual);
+    }
+  });
+
+  it("anual NUNCA usa o preço mensal", async () => {
+    for (const [planId, mensal] of [
+      ["plan_standard", "price_standard_mensal"],
+      ["plan_pro", "price_pro_mensal"],
+    ]) {
+      await expect(priceIdEnviado(planId!, "YEARLY")).resolves.not.toBe(mensal);
+    }
+  });
+
+  it("Standard NUNCA usa preço do Pro", async () => {
+    const doPro = [PRO.validapayPriceMonthlyId, PRO.validapayPriceYearlyId];
+
+    for (const intervalo of ["MONTHLY", "YEARLY"] as const) {
+      expect(doPro).not.toContain(await priceIdEnviado("plan_standard", intervalo));
+    }
+  });
+
+  it("Pro NUNCA usa preço do Standard", async () => {
+    const doStandard = [
+      STANDARD.validapayPriceMonthlyId,
+      STANDARD.validapayPriceYearlyId,
+    ];
+
+    for (const intervalo of ["MONTHLY", "YEARLY"] as const) {
+      expect(doStandard).not.toContain(await priceIdEnviado("plan_pro", intervalo));
+    }
+  });
+
+  it("os quatro identificadores são distintos entre si", async () => {
+    const todos = await Promise.all([
+      priceIdEnviado("plan_standard", "MONTHLY"),
+      priceIdEnviado("plan_standard", "YEARLY"),
+      priceIdEnviado("plan_pro", "MONTHLY"),
+      priceIdEnviado("plan_pro", "YEARLY"),
+    ]);
+
+    // Dois caminhos com o mesmo priceId cobrariam o valor errado em silêncio.
+    expect(new Set(todos).size).toBe(4);
+  });
+
+  it("a tela reflete a disponibilidade de cada periodicidade", async () => {
+    const service = new SubscriptionCheckoutService(
+      ambiente.repo,
+      CATALOGO,
+      empresas(),
+      gateway(),
+    );
+
+    for (const [slug, intervalo, valor] of [
+      ["standard", "MONTHLY", 29],
+      ["standard", "YEARLY", 290],
+      ["pro", "MONTHLY", 89],
+      ["pro", "YEARLY", 890],
+    ] as const) {
+      const plano = await service.descreverPlanoParaCheckout(slug, intervalo);
+      expect(plano?.disponivelParaContratacao).toBe(true);
+      expect(plano?.valor).toBe(valor);
+    }
+  });
+
+  it("sem priceId cadastrado, a periodicidade fica indisponível", async () => {
+    const semAnual: PlanRepository = {
+      ...CATALOGO,
+      findBySlug: async () => ({ ...STANDARD, validapayPriceYearlyId: null }),
+    };
+    const service = new SubscriptionCheckoutService(
+      ambiente.repo,
+      semAnual,
+      empresas(),
+      gateway(),
+    );
+
+    // Mensal continua contratável; anual não. A indisponibilidade é por
+    // periodicidade, não pelo plano inteiro.
+    expect(
+      (await service.descreverPlanoParaCheckout("standard", "MONTHLY"))
+        ?.disponivelParaContratacao,
+    ).toBe(true);
+    expect(
+      (await service.descreverPlanoParaCheckout("standard", "YEARLY"))
+        ?.disponivelParaContratacao,
+    ).toBe(false);
+  });
+});
