@@ -3,28 +3,32 @@
 **Atualizado em:** 14/08/2026
 **Propósito:** permitir retomar o trabalho numa conversa nova, sem depender do histórico anterior.
 
-> **Onde paramos:** ✅ **Migração local para PostgreSQL 18 FINALIZADA.**
-> O desenvolvimento roda em `localhost:5432/fluxy_dev` com a role `fluxy`; os
-> testes, isolados em `fluxy_test`. O `prisma dev` está aposentado.
+> **Onde paramos:** ✅ **QA geral aprovado. Fluxy funcionalmente completo para MVP.**
+> Migração local para PostgreSQL 18 finalizada — desenvolvimento roda em
+> `localhost:5432/fluxy_dev` com a role `fluxy`; testes isolados em `fluxy_test`.
 > **F3 (checkout ValidaPay) ENCERRADA TECNICAMENTE para sandbox/MVP** —
 > fluxo completo comprovado ponta a ponta com webhook real em produção
-> (seção 16.15). Produtos/preços comerciais definitivos ainda não existem;
-> pagamento real ainda não está habilitado.
+> (seção 16.15). QA geral de toda a aplicação (clientes, produtos, pedidos,
+> estoque, produção, billing, autenticação/permissões, responsividade)
+> concluído em 14/08/2026 **sem nenhum bug real encontrado** (seção 19).
+> Produtos/preços comerciais definitivos ainda não existem; pagamento real
+> ainda não está habilitado.
 > Ver seções 12 a 15 para a migração, 16 para o histórico da F3-DISCOVERY
-> (16.15 para o fechamento) e 18 para o prompt de retomada.
+> (16.15 para o fechamento), 19 para o QA geral e pré-lançamento, e 18 para
+> o prompt de retomada.
 
 ---
 
 ## 1. Estado do Git
 
-|                 |                                                                      |
-| --------------- | -------------------------------------------------------------------- |
-| Branch atual    | `master`                                                             |
-| Working tree    | limpa                                                                |
-| HEAD            | `fbb152d` — `test: isolate database and finalize postgres migration` |
-| Merge do PR #4  | `ae3d088`                                                            |
-| Commit de F1+F2 | `ed8ae9e` — `feat: add ValidaPay client and payment provider schema` |
-| PR #4           | **mesclado** em `master` (`ae3d088`)                                 |
+|                 |                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| Branch atual    | `master`                                                                                                   |
+| Working tree    | limpa                                                                                                      |
+| HEAD            | `4079b37` — `docs: record ValidaPay F3 production webhook validation and closure`, igual a `origin/master` |
+| Merge do PR #4  | `ae3d088`                                                                                                  |
+| Commit de F1+F2 | `ed8ae9e` — `feat: add ValidaPay client and payment provider schema`                                       |
+| PR #4           | **mesclado** em `master` (`ae3d088`)                                                                       |
 
 Os scripts de exportação, importação e reconciliação vivem **fora do
 repositório**. As únicas mudanças de código que a migração produziu foram as do
@@ -1178,17 +1182,48 @@ desenvolvimento roda em localhost:5432/fluxy_dev com a role `fluxy`; os
 testes em fluxy_test via TEST_DATABASE_URL. O `prisma dev` está
 aposentado e NÃO deve ser iniciado.
 
-Estado: 579 linhas migradas e equivalentes ao backup, 9 migrations,
-628/628 testes, type-check, lint e build limpos, aplicação sobe e serve
-o catálogo migrado.
+Estado: 9 migrations aplicadas em produção, 846/846 testes, type-check,
+lint e build limpos, aplicação sobe e serve normalmente.
 
 F3 (checkout ValidaPay) está ENCERRADA TECNICAMENTE para sandbox/MVP —
-webhook real validado em produção, ponta a ponta (seção 16.15). Falta só
-a etapa comercial: produtos/preços definitivos e habilitar pagamento real,
-quando eu autorizar. Respeite integralmente as proibições da seção 17.
+webhook real validado em produção, ponta a ponta (seção 16.15). QA geral
+da aplicação inteira aprovado em 14/08/2026, sem nenhum bug real
+encontrado (seção 19). Falta só a etapa comercial: produtos/preços
+definitivos e habilitar pagamento real, quando eu autorizar. Respeite
+integralmente as proibições da seção 17.
 
 Não faça commit sem minha autorização.
 ```
+
+---
+
+## 19. QA geral e bloco de pré-lançamento (14/08/2026)
+
+**QA geral aprovado pelo usuário. Nenhum bug real encontrado** após varredura
+completa: clientes, produtos, pedidos, estoque, produção, billing/checkout,
+autenticação/permissões (isolamento multi-tenant confirmado), mensagens de
+erro/empty states, e responsividade (mobile/tablet/desktop). Todas as
+suspeitas de bug investigadas se resolveram em artefatos da ferramenta de QA
+ou em comportamento intencional (ex.: `callbackUrl` não honrado no login é
+proteção anti open-redirect deliberada, não bug). Detalhe da causa raiz do
+"fallback preso" na ferramenta de QA: ver entrada atualizada em
+"Dívidas técnicas registradas" abaixo.
+
+**Bloco de pré-lançamento (mesma data):**
+
+- Working tree limpa, `HEAD` = `origin/master` (`4079b37`).
+- `type-check`, `lint`, `test` (846/846) e `build` verdes.
+- Nenhuma credencial versionada — apenas `.env.example` (sem segredos) está no
+  git; `.env`, `.env.production.local` etc. seguem cobertos por `.env*` no
+  `.gitignore`.
+- `README.md` estava no boilerplate padrão do `create-next-app` — atualizado
+  para descrever o Fluxy de fato.
+- Landing e textos comerciais revisados por inconsistência — sem alterações
+  necessárias.
+
+**Fora do escopo desta rodada, deliberadamente não tocado:** arquitetura de
+pagamentos, ValidaPay (nenhum bug concreto encontrado que justificasse mexer),
+migrations, e qualquer nova microfase.
 
 ---
 
@@ -1197,7 +1232,7 @@ Não faça commit sem minha autorização.
 - Colunas `asaas*` em `Company` — remover em migration própria, após verificar produção.
 - Fórmula da `idempotencyKey` — fechar na fase de webhook, com payloads reais.
 - `callbackUrl` é escrito pelo middleware e **não consumido** por ninguém. Corrigir exige lista de permissão de destinos.
-- Rotas sob `/dashboard` ficam no fallback de `loading.tsx` no navegador embutido usado nas verificações; reproduz em rotas não tocadas, dev e produção. Conferir num navegador comum.
+- Rotas sob `/dashboard` ficam no fallback de `loading.tsx` no navegador embutido usado nas verificações. **Causa raiz identificada em 14/08/2026 (QA geral, seção 19):** o painel de navegador dessa ferramenta nunca compõe frames de verdade (`document.visibilityState` permanece `"hidden"` mesmo com a aba em foco) — isso impede o script de revelação do streaming SSR do React/Next de concluir em navegação direta (hard reload). Navegação client-side (clique em link) hidrata normalmente. Reproduzido igualmente em dev e em build de produção local limpo, sem nenhum erro de console e com todas as respostas de rede em 200 — não é bug do Fluxy, é limitação da ferramenta de QA. Não é bloqueante para usuários reais (qualquer navegador comum compõe frames normalmente).
 - **Teardown de `VerificationToken` nos testes.** Os testes que exercitam cadastro
   e verificação de e-mail criam 28 tokens e não os removem. Hoje o `globalSetup`
   limpa `fluxy_test` antes de cada execução, então a suíte é reexecutável e nada

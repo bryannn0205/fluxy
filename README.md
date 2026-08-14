@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fluxy
 
-## Getting Started
+SaaS multi-tenant de gestão de pedidos, produção e financeiro — em evolução para um ERP completo. Cada empresa (tenant) tem seus dados completamente isolados por `companyId`.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Next.js 15** (App Router) + **React 19** + TypeScript estrito
+- **Prisma 7** + PostgreSQL (`@prisma/adapter-pg`)
+- **Auth.js v5** (credenciais + Google OAuth opcional)
+- **Tailwind** + shadcn/ui + Base UI
+- **Vitest** + Testing Library para testes
+- Pagamentos: **ValidaPay** (sandbox — ver `docs/STATUS-VALIDAPAY.md`)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Arquitetura: Repository → Service → Server Action/API → UI. Ver `.claude/docs/` para os padrões e regras do projeto.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Como rodar localmente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Copie `.env.example` para `.env` e preencha os valores (veja os comentários no próprio arquivo — só `DATABASE_URL` e `AUTH_SECRET` são obrigatórios para subir a aplicação).
+2. Instale as dependências e gere o client do Prisma:
 
-## Learn More
+   ```bash
+   npm install
+   npx prisma generate
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+3. Aplique as migrations no banco de desenvolvimento:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   npx prisma migrate deploy
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. Rode o servidor de desenvolvimento:
 
-## Deploy on Vercel
+   ```bash
+   npm run dev
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   Abra [http://localhost:3000](http://localhost:3000).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts úteis
+
+| Comando              | O que faz                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run dev`        | Servidor de desenvolvimento (`next dev`)                                                            |
+| `npm run build`      | `prisma generate && next build`                                                                     |
+| `npm start`          | Servidor de produção (após `build`)                                                                 |
+| `npm run type-check` | `tsc --noEmit`                                                                                      |
+| `npm run lint`       | ESLint                                                                                              |
+| `npm test`           | Testes (Vitest) — requer `TEST_DATABASE_URL` separado, nunca aponta para o banco de desenvolvimento |
+| `npm run db:studio`  | Prisma Studio                                                                                       |
+| `npm run db:seed`    | Popula planos e dados base                                                                          |
+
+## Documentação
+
+A documentação completa do projeto (arquitetura, padrões de código, deploy, segurança etc.) vive em [`.claude/docs/`](.claude/docs/). O estado real e atualizado da integração de pagamentos está em [`docs/STATUS-VALIDAPAY.md`](docs/STATUS-VALIDAPAY.md) — sempre a fonte de verdade antes de qualquer suposição.
+
+## Deploy
+
+Deploy na Vercel. Ver [`.claude/docs/tech-stack/deploy-vercel.md`](.claude/docs/tech-stack/deploy-vercel.md) para variáveis de ambiente, runtime e o passo a passo de migrations em produção.
