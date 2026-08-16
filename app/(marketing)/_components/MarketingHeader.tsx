@@ -44,31 +44,40 @@ export function MarketingHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link
-          href={ROUTES.HOME}
-          className="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-        >
-          <FluxyLogo />
-          <span className="sr-only">Fluxy — página inicial</span>
-        </Link>
+      <div className="mx-auto flex h-18 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        {/* Marca e navegação no MESMO grupo. Separados pelo `justify-between`,
+            sobrava um vão morto entre os dois em telas largas, e a barra lia
+            como três ilhas distantes. Juntos, a navegação pertence à marca e o
+            respiro fica todo de um lado só, onde ele tem função. */}
+        <div className="flex items-center gap-9">
+          <Link
+            href={ROUTES.HOME}
+            className="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            {/* Os tamanhos vêm por variante de filho, e não por prop nova: o
+                FluxyLogo é compartilhado com o painel e as telas de acesso, e
+                aumentá-lo lá dentro mudaria a marca em todo o produto. */}
+            <FluxyLogo className="[&>span]:text-xl [&>svg]:size-7" />
+            <span className="sr-only">Fluxy — página inicial</span>
+          </Link>
 
-        {naLanding && (
-          <nav aria-label="Navegação do site" className="hidden md:block">
-            <ul className="flex items-center gap-1">
-              {MARKETING_NAV_LINKS.map((link) => (
-                <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
+          {naLanding && (
+            <nav aria-label="Navegação do site" className="hidden md:block">
+              <ul className="flex items-center gap-1">
+                {MARKETING_NAV_LINKS.map((link) => (
+                  <li key={link.href}>
+                    <a
+                      href={link.href}
+                      className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           {/* `h-10` sobrepõe a altura de 28px do tamanho "sm": é o único
