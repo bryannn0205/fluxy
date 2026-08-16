@@ -26,9 +26,17 @@ interface LoginFormProps {
   intent: PlanIntent | null;
 }
 
-/** Altura, respiro para o ícone e cor de fundo comuns aos dois campos. */
+/**
+ * Altura, respiro para o ícone e superfície comuns aos dois campos.
+ *
+ * A borda é `--auth-field-border`, e não a `--border` lavanda do escopo: medido
+ * na tela, o campo já era mais escuro que o cartão, mas o contorno a 22% de
+ * lavanda desenhava uma moldura luminosa e fazia a caixa inteira ler como
+ * clara. Um violeta acinzentado fecha o campo como uma superfície rebaixada,
+ * que é o que ele é.
+ */
 const CLASSES_DO_CAMPO =
-  "h-12 rounded-xl border-border bg-[var(--auth-field)] pl-11 text-sm placeholder:text-muted-foreground/70";
+  "h-12 rounded-xl border-[var(--auth-field-border)] bg-[var(--auth-field)] pl-11 text-sm placeholder:text-muted-foreground/60";
 
 export function LoginForm({ intent }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,7 +78,7 @@ export function LoginForm({ intent }: LoginFormProps) {
                   apontava para ele e o campo ficava sem rótulo acessível. */}
               <div className="relative">
                 <Mail
-                  className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground"
+                  className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground/60"
                   aria-hidden="true"
                 />
                 <FormControl>
@@ -105,7 +113,7 @@ export function LoginForm({ intent }: LoginFormProps) {
               </div>
               <div className="relative">
                 <Lock
-                  className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground"
+                  className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground/60"
                   aria-hidden="true"
                 />
                 <FormControl>

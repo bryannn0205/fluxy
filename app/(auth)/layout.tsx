@@ -22,7 +22,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="auth relative isolate flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-10 text-foreground sm:px-6">
       <AuthBackground />
 
-      <div className="auth-entrada w-full max-w-[27rem] space-y-7">
+      {/* `sm:mt-5` desce o conjunto 20px no desktop: centrado com exatidão, o
+          bloco assenta um pouco alto para o olho, que lê o centro óptico acima
+          do centro geométrico. No celular fica de fora — ali cada pixel de
+          altura conta quando o teclado virtual abre. */}
+      <div className="auth-entrada w-full max-w-[27rem] space-y-7 sm:mt-5">
         <div className="flex justify-center">
           <FluxyLogo className="[&>span]:text-xl [&>svg]:size-7" />
         </div>

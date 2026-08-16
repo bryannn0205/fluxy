@@ -248,6 +248,9 @@
   /* Exclusivos das telas de acesso. */
   --auth-lavender: #a78bfa;
   --auth-field: #0c0b15;
+  /* Violeta acinzentado e opaco: a lavanda translúcida da `--border` virava
+     moldura luminosa em volta do campo e clareava a caixa toda. */
+  --auth-field-border: #241f36;
   --auth-glow: rgba(124, 58, 237, 0.28);
 }
 
