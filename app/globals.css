@@ -209,6 +209,75 @@
   --ring: oklch(0.47 0.204 293);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Telas de acesso (entrar, cadastro, recuperação, convite).
+
+   Mesmo mecanismo do escopo `.marketing`: os tokens são redeclarados aqui, de
+   modo que Card, Input, Button, FormLabel e FormMessage — todos já existentes —
+   adotem a paleta escura sem uma segunda versão de nenhum deles. O painel, que
+   vive fora deste escopo, continua lendo `:root`/`.dark`.
+
+   O escopo cobre TODAS as telas de acesso, e não só a de entrar: elas
+   compartilham o mesmo layout e o visitante alterna entre entrar e cadastrar o
+   tempo todo. Deixar uma escura e a outra clara quebraria o fluxo no meio.
+
+   Contrastes conferidos contra WCAG 2.1 AA: branco sobre o roxo do botão fica
+   em 5,7:1; o texto secundário, em 7,8:1 sobre o cartão; a lavanda dos links,
+   em 6,9:1.
+   ───────────────────────────────────────────────────────────────────────── */
+.auth {
+  --background: #07070d;
+  --foreground: #f8f7fc;
+  --card: #11101d;
+  --card-foreground: #f8f7fc;
+  --popover: #11101d;
+  --popover-foreground: #f8f7fc;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1826;
+  --secondary-foreground: #f8f7fc;
+  --muted: #14131f;
+  --muted-foreground: #aaa6b5;
+  --accent: #1c1a2b;
+  --accent-foreground: #f8f7fc;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: rgba(167, 139, 250, 0.22);
+  --input: rgba(167, 139, 250, 0.22);
+  --ring: #8b5cf6;
+
+  /* Exclusivos das telas de acesso. */
+  --auth-lavender: #a78bfa;
+  --auth-field: #0c0b15;
+  --auth-glow: rgba(124, 58, 237, 0.28);
+}
+
+/* Entrada do bloco de acesso: aparece uma vez, no carregamento.
+
+   Sem estado inicial oculto controlado por JavaScript, ao contrário do
+   `.mkt-reveal` da landing — aqui não há rolagem nem observador envolvidos, e
+   uma animação CSS que termina em `both` deixa o conteúdo visível mesmo se
+   nada mais rodar. */
+@keyframes auth-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.auth-entrada {
+  animation: auth-entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-entrada {
+    animation: none;
+  }
+}
+
 /* Entrada suave ao chegar na viewport.
 
    O HTML nasce VISÍVEL: quem tem JavaScript desligado, e o rastreador que não

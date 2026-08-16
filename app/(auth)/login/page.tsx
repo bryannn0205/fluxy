@@ -26,17 +26,23 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const intent = parsePlanIntent({ plan: params.plan, billing: params.billing });
 
   return (
-    <Card>
+    // `--card-spacing` comanda o padding e o intervalo entre cabeçalho e
+    // conteúdo do Card. O padrão são 16px, apertados para uma tela em que o
+    // formulário é o único assunto: 28px no celular, 32px acima.
+    <Card className="rounded-[1.375rem] border-border bg-card/95 shadow-[0_28px_70px_-24px_rgba(0,0,0,0.9)] ring-1 ring-[var(--auth-glow)] backdrop-blur-sm [--card-spacing:--spacing(7)] sm:[--card-spacing:--spacing(8)]">
       <CardHeader>
-        <h1 className="font-heading text-xl leading-snug font-semibold tracking-tight">
+        <h1 className="font-heading text-2xl leading-snug font-semibold tracking-tight">
           Entrar
         </h1>
       </CardHeader>
       <CardContent className="space-y-4">
         {sessionExpired && (
+          // O âmbar claro de antes vinha de uma tela de fundo branco; sobre o
+          // cartão escuro ele virava um bloco luminoso que puxava a atenção
+          // para longe do formulário.
           <div
             role="status"
-            className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
           >
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <span>Sua sessão não é mais válida. Entre novamente para continuar.</span>
@@ -62,7 +68,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           Ainda não tem conta?{" "}
           <Link
             href={buildRegisterUrl(intent)}
-            className="font-medium text-foreground underline underline-offset-4"
+            className="font-medium text-[var(--auth-lavender)] underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline"
           >
             Criar conta grátis
           </Link>
