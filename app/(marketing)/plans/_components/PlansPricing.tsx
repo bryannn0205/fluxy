@@ -9,6 +9,8 @@ import { BillingToggle } from "@/components/common/BillingToggle";
 import { PlanFeatures, PlanPrice } from "@/components/common/PlanFacts";
 import {
   DEFAULT_PLAN_SLUG,
+  planHasTrial,
+  RECOMMENDED_PLAN_SLUG,
   TRIAL_DURATION_DAYS,
   type BillingInterval,
 } from "@/lib/constants";
@@ -19,7 +21,8 @@ import type { PublicPlan } from "@/types/plans";
 /** Uma linha por plano, no lugar de repetir a frase dentro de cada card. */
 const POSICIONAMENTO: Record<string, string> = {
   standard: "Ideal para começar",
-  pro: "Para operações em crescimento",
+  plus: "Para quem já cresceu",
+  pro: "Para operações maiores",
 };
 
 interface PlansPricingProps {
@@ -57,19 +60,31 @@ export function PlansPricing({ plans }: PlansPricingProps) {
     <div className="space-y-10">
       <BillingToggle value={cobranca} onChange={setCobranca} />
 
-      <ul className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
+      <ul className="mx-auto grid max-w-6xl items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
         {plans.map((plano) => {
-          const ehPadrao = plano.slug === DEFAULT_PLAN_SLUG;
+          const ehRecomendado = plano.slug === RECOMMENDED_PLAN_SLUG;
+          // A pergunta é "este plano tem teste?", não "este plano é o padrão?".
+          // Com três planos as duas deixaram de ser a mesma coisa, e prometer
+          // teste onde ele não existe é o erro que mais custa no suporte.
+          const temTrial = planHasTrial(plano.slug);
           // Revalidado aqui pela mesma função que a próxima fronteira usará —
           // um slug que não sobrevive a ela não vira botão.
           const intencao = parsePlanIntent({ plan: plano.slug, billing: cobranca });
 
           return (
-            <li key={plano.slug}>
+            <li key={plano.slug} className="relative flex">
+              {/* Selo do recomendado. Texto, e não só borda colorida: o
+                  destaque precisa existir para quem não distingue o roxo. */}
+              {ehRecomendado && (
+                <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-primary/40 bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground">
+                  Mais escolhido
+                </span>
+              )}
+
               <Card
                 className={cn(
-                  "h-full",
-                  !ehPadrao && "border-primary/45 shadow-sm shadow-primary/5",
+                  "h-full w-full",
+                  ehRecomendado && "border-primary/45 shadow-lg shadow-primary/10",
                 )}
               >
                 <CardContent className="flex h-full flex-col gap-6">
@@ -78,8 +93,6 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                         primeiro nível sob o h1 — não há seção "Planos" acima
                         deles como há na landing. */}
                     <h2 className="text-xl font-semibold">{plano.name}</h2>
-                    {/* Texto, não só cor: o destaque do Pro precisa existir
-                        para quem não distingue a borda roxa. */}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {POSICIONAMENTO[plano.slug] ?? ""}
                     </p>
@@ -87,8 +100,10 @@ export function PlansPricing({ plans }: PlansPricingProps) {
 
                   <div>
                     <PlanPrice plan={plano} billing={cobranca} />
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      {TRIAL_DURATION_DAYS} dias grátis
+                    {/* Altura reservada mesmo sem trial, para os três preços
+                        ficarem na mesma linha entre os cartões. */}
+                    <p className="mt-1.5 min-h-4 text-xs text-muted-foreground">
+                      {temTrial ? `${TRIAL_DURATION_DAYS} dias grátis` : ""}
                     </p>
                   </div>
 
@@ -101,7 +116,7 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                       href={buildRegisterUrl(intencao)}
                       className={cn(
                         buttonVariants({
-                          variant: ehPadrao ? "outline" : "default",
+                          variant: ehRecomendado ? "default" : "outline",
                           size: "lg",
                         }),
                         "w-full",

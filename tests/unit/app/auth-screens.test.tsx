@@ -29,7 +29,20 @@ describe("PlanIntentNotice", () => {
     expect(aviso).toHaveTextContent("Anual");
     // A ressalva não é decorativa: o cadastro cria a empresa no Standard.
     expect(aviso).toHaveTextContent(
-      "O plano Pro será ativado somente após a contratação.",
+      "O Fluxy Pro será ativado somente após a contratação.",
+    );
+  });
+
+  it("chama o Plus pelo nome, em vez de tratá-lo como Pro", () => {
+    render(<PlanIntentNotice intent={{ plan: "plus", billing: "monthly" }} />);
+
+    const aviso = screen.getByRole("status");
+    // O texto vinha de um ternário "padrão ou Pro": com três planos, o Plus
+    // caía no `else` e era anunciado com o nome errado.
+    expect(aviso).toHaveTextContent("Você escolheu o Fluxy Plus.");
+    expect(aviso).not.toHaveTextContent("Fluxy Pro");
+    expect(aviso).toHaveTextContent(
+      "O Fluxy Plus será ativado somente após a contratação.",
     );
   });
 

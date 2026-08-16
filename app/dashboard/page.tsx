@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { formatCurrency } from "@/lib/formatters";
-import { DEFAULT_PLAN_SLUG, ROUTES } from "@/lib/constants";
+import { DEFAULT_PLAN_SLUG, PUBLIC_PLAN_NAMES, ROUTES } from "@/lib/constants";
 import { can } from "@/lib/permissions";
 import { parsePlanIntent } from "@/lib/plan-intent";
 import { requireCompany } from "@/lib/session";
@@ -58,7 +58,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     plan: params.plan,
     billing: params.billing,
   });
-  const mostrarAvisoDoPro = planIntent !== null && planIntent.plan !== DEFAULT_PLAN_SLUG;
+  // Vale para qualquer plano pago escolhido antes do cadastro, não só o Pro:
+  // com três planos, um aviso fixo em "Pro" chamaria o Plus pelo nome errado.
+  const planoEscolhido =
+    planIntent !== null && planIntent.plan !== DEFAULT_PLAN_SLUG
+      ? PUBLIC_PLAN_NAMES[planIntent.plan]
+      : null;
 
   const [stats, recentOrders, lowStockProducts, salesReport] = await Promise.all([
     orderService.getStats(companyId, role),
@@ -82,7 +87,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </p>
       </div>
 
-      {mostrarAvisoDoPro && (
+      {planoEscolhido && (
         <div
           role="status"
           className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/8 px-4 py-3 text-sm"
@@ -92,7 +97,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             aria-hidden="true"
           />
           <p>
-            <span className="font-medium">Plano Pro selecionado.</span>{" "}
+            <span className="font-medium">{planoEscolhido} selecionado.</span>{" "}
             <span className="text-muted-foreground">
               A cobrança será disponibilizada em breve. Até lá, sua empresa continua no
               teste grátis com os limites do Standard.

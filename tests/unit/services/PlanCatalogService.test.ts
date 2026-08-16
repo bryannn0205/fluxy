@@ -43,13 +43,14 @@ describe("PlanCatalogService", () => {
     const service = new PlanCatalogService(
       repositorioCom([
         plano("standard", "29.00", "290.00"),
+        plano("plus", "49.00", "490.00"),
         plano("pro", "89.00", "890.00"),
       ]),
     );
 
     const catalogo = await service.listPublicPlans();
 
-    expect(catalogo.map((p) => p.slug)).toEqual(["standard", "pro"]);
+    expect(catalogo.map((p) => p.slug)).toEqual(["standard", "plus", "pro"]);
     expect(erro).not.toHaveBeenCalled();
   });
 
@@ -64,7 +65,7 @@ describe("PlanCatalogService", () => {
     // Uma oferta a menos é melhor que nenhuma: a página continua de pé.
     expect(catalogo.map((p) => p.slug)).toEqual(["standard"]);
     expect(erro).toHaveBeenCalledOnce();
-    expect(erro.mock.calls[0]?.[1]).toMatchObject({ ausentes: ["pro"] });
+    expect(erro.mock.calls[0]?.[1]).toMatchObject({ ausentes: ["plus", "pro"] });
   });
 
   it("com o catálogo vazio, devolve lista vazia em vez de inventar preço", async () => {
@@ -75,7 +76,9 @@ describe("PlanCatalogService", () => {
 
     expect(catalogo).toEqual([]);
     expect(erro).toHaveBeenCalledOnce();
-    expect(erro.mock.calls[0]?.[1]).toMatchObject({ ausentes: ["standard", "pro"] });
+    expect(erro.mock.calls[0]?.[1]).toMatchObject({
+      ausentes: ["standard", "plus", "pro"],
+    });
   });
 
   it("não expõe nenhum método de escrita ou de busca por id", async () => {

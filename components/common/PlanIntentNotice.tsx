@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 
-import { DEFAULT_PLAN_SLUG } from "@/lib/constants";
+import { DEFAULT_PLAN_SLUG, PUBLIC_PLAN_NAMES } from "@/lib/constants";
 import type { BillingInterval, PlanIntent } from "@/lib/plan-intent";
 
 const PERIODICIDADE: Record<BillingInterval, string> = {
@@ -28,6 +28,10 @@ export function PlanIntentNotice({ intent }: PlanIntentNoticeProps) {
   if (intent === null) return null;
 
   const ehPadrao = intent.plan === DEFAULT_PLAN_SLUG;
+  // Nome vindo do slug, e não um literal "Pro": com três planos, o texto
+  // anterior chamava o Plus de Pro — o `else` tratava todo não-Standard como
+  // Pro, que é exatamente o defeito que a lista de slugs existe para evitar.
+  const nomeDoPlano = PUBLIC_PLAN_NAMES[intent.plan];
 
   return (
     <div
@@ -38,16 +42,16 @@ export function PlanIntentNotice({ intent }: PlanIntentNoticeProps) {
       <div className="space-y-1">
         <p className="font-medium">
           {ehPadrao
-            ? "Você está começando com o Fluxy Standard."
-            : "Você escolheu o Fluxy Pro."}{" "}
+            ? `Você está começando com o ${nomeDoPlano}.`
+            : `Você escolheu o ${nomeDoPlano}.`}{" "}
           <span className="font-normal text-muted-foreground">
             {PERIODICIDADE[intent.billing]}
           </span>
         </p>
         {!ehPadrao && (
           <p className="text-muted-foreground">
-            O plano Pro será ativado somente após a contratação. Você começa com o teste
-            grátis no Standard.
+            O {nomeDoPlano} será ativado somente após a contratação. Você começa com o
+            teste grátis no {PUBLIC_PLAN_NAMES[DEFAULT_PLAN_SLUG]}.
           </p>
         )}
       </div>

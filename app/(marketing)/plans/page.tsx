@@ -3,15 +3,18 @@ import { connection } from "next/server";
 
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { TRIAL_DURATION_DAYS } from "@/lib/constants";
+import {
+  DEFAULT_PLAN_SLUG,
+  PUBLIC_PLAN_NAMES,
+  TRIAL_DURATION_DAYS,
+} from "@/lib/constants";
 import { planCatalogService } from "@/services";
 import type { PublicPlan } from "@/types/plans";
 import { PlansPricing } from "@/app/(marketing)/plans/_components/PlansPricing";
 import { PlansFaq } from "@/app/(marketing)/plans/_components/PlansFaq";
 
 const TITULO = "Planos — Fluxy";
-const DESCRICAO =
-  "Compare os planos Standard e Pro do Fluxy e escolha a opção ideal para sua empresa.";
+const DESCRICAO = "Compare os planos do Fluxy e escolha a opção ideal para sua empresa.";
 
 export const metadata: Metadata = {
   title: { absolute: TITULO },
@@ -51,8 +54,12 @@ export default async function PlansPage() {
         <h1 className="text-4xl font-bold tracking-tight text-balance sm:text-5xl">
           Escolha o plano ideal para sua empresa
         </h1>
+        {/* O teste grátis é do Standard, e a frase precisa dizer isso: a
+            versão anterior — "Comece com 14 dias grátis e escolha o plano" —
+            prometia teste em todos, e agora só um dos três tem. */}
         <p className="mt-4 text-base text-pretty text-muted-foreground sm:text-lg">
-          Comece com {TRIAL_DURATION_DAYS} dias grátis e escolha o plano que acompanha o
+          Comece com {TRIAL_DURATION_DAYS} dias grátis no{" "}
+          {PUBLIC_PLAN_NAMES[DEFAULT_PLAN_SLUG]} ou escolha o plano que acompanha o
           crescimento da sua operação.
         </p>
       </div>
@@ -71,12 +78,12 @@ export default async function PlansPage() {
             os limites do plano Standard.
           </p>
           {/* Dito em linguagem de produto: o visitante precisa saber que
-              escolher Pro agora não libera Pro agora. Sem expor nome de campo
-              nem estado interno. */}
+              escolher um plano pago agora não o libera agora. Sem expor nome
+              de campo nem estado interno. */}
           <p>
-            Escolher o Pro agora registra sua preferência e orienta o cadastro — os
-            limites maiores passam a valer quando o pagamento for confirmado. O pagamento
-            online ainda será disponibilizado.
+            Escolher um plano pago agora registra sua preferência e orienta o cadastro —
+            os limites maiores passam a valer quando o pagamento for confirmado. O
+            pagamento online ainda será disponibilizado.
           </p>
         </div>
       </section>

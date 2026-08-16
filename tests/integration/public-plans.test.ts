@@ -17,10 +17,10 @@ afterAll(async () => {
 // aprovados chegaram ao banco e que a camada pública os entrega intactos —
 // nenhum deles escreve nada.
 describe.skipIf(!prisma)("catálogo público de planos", () => {
-  it("devolve standard e pro, nesta ordem", async () => {
+  it("devolve standard, plus e pro, nesta ordem", async () => {
     const catalogo = await service!.listPublicPlans();
 
-    expect(catalogo.map((plano) => plano.slug)).toEqual(["standard", "pro"]);
+    expect(catalogo.map((plano) => plano.slug)).toEqual(["standard", "plus", "pro"]);
   });
 
   it("entrega os preços aprovados, lidos do banco", async () => {

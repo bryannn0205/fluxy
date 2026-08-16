@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@/lib/generated/prisma/client";
-import { DEFAULT_PLAN_SLUG, MODULE_KEYS } from "@/lib/constants";
+import { DEFAULT_PLAN_SLUG, MODULE_KEYS, PUBLIC_PLAN_NAMES } from "@/lib/constants";
 
 /**
  * Catálogo de planos — FONTE ÚNICA.
@@ -14,22 +14,45 @@ import { DEFAULT_PLAN_SLUG, MODULE_KEYS } from "@/lib/constants";
  * `maxOrdersPerMonth = 500`); duplicar a lista faria a duplicata divergir em
  * silêncio no dia em que um limite mudasse.
  */
+/**
+ * Anual = dez mensalidades, ou seja, dois meses grátis.
+ *
+ * Não é invenção: é a regra que os dois planos originais já seguiam
+ * (29 → 290 e 89 → 890). Deixá-la explícita evita que o próximo plano seja
+ * criado com um anual arbitrário, e o teste de catálogo a verifica.
+ */
+const MESES_COBRADOS_NO_ANUAL = 10;
+
+function anual(mensal: number): number {
+  return mensal * MESES_COBRADOS_NO_ANUAL;
+}
+
 export const PLANS = [
   {
     slug: DEFAULT_PLAN_SLUG,
-    name: "Fluxy Standard",
+    name: PUBLIC_PLAN_NAMES.standard,
     priceMonthly: 29,
-    priceYearly: 290,
+    priceYearly: anual(29),
     maxUsers: 5,
     maxOrdersPerMonth: 500,
     maxProducts: 500,
     maxCustomers: 2000,
   },
   {
+    slug: "plus",
+    name: PUBLIC_PLAN_NAMES.plus,
+    priceMonthly: 49,
+    priceYearly: anual(49),
+    maxUsers: 10,
+    maxOrdersPerMonth: 1500,
+    maxProducts: 1500,
+    maxCustomers: 5000,
+  },
+  {
     slug: "pro",
-    name: "Fluxy Pro",
+    name: PUBLIC_PLAN_NAMES.pro,
     priceMonthly: 89,
-    priceYearly: 890,
+    priceYearly: anual(89),
     maxUsers: 20,
     maxOrdersPerMonth: 3000,
     maxProducts: 3000,

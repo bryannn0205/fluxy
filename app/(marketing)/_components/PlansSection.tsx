@@ -2,7 +2,13 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
-import { DEFAULT_PLAN_SLUG, ROUTES, TRIAL_DURATION_DAYS } from "@/lib/constants";
+import {
+  DEFAULT_PLAN_SLUG,
+  PUBLIC_PLAN_NAMES,
+  RECOMMENDED_PLAN_SLUG,
+  ROUTES,
+  TRIAL_DURATION_DAYS,
+} from "@/lib/constants";
 import { formatPriceFromDecimalString } from "@/lib/formatters";
 import { buildRegisterUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { cn } from "@/lib/utils";
@@ -35,8 +41,8 @@ export function PlansSection({ plans }: PlansSectionProps) {
             Planos
           </h2>
           <p className="mt-4 text-muted-foreground">
-            Todos os planos começam com {TRIAL_DURATION_DAYS} dias grátis. Sem cobrança
-            durante o teste.
+            O {PUBLIC_PLAN_NAMES[DEFAULT_PLAN_SLUG]} começa com {TRIAL_DURATION_DAYS} dias
+            grátis. Sem cobrança durante o teste.
           </p>
         </Reveal>
 
@@ -56,9 +62,9 @@ export function PlansSection({ plans }: PlansSectionProps) {
             .
           </p>
         ) : (
-          <ul className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+          <ul className="mx-auto mt-14 grid max-w-6xl items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
             {plans.map((plano, indice) => {
-              const ehPadrao = plano.slug === DEFAULT_PLAN_SLUG;
+              const ehRecomendado = plano.slug === RECOMMENDED_PLAN_SLUG;
               // Passa pelo parser da E3 em vez de montar o objeto à mão: é a
               // mesma validação que a próxima fronteira vai aplicar, então um
               // slug que não sobrevive aqui não vira link.
@@ -72,14 +78,15 @@ export function PlansSection({ plans }: PlansSectionProps) {
                   <div
                     className={cn(
                       "relative flex h-full flex-col gap-6 rounded-2xl border p-7 transition-colors duration-200",
-                      ehPadrao
-                        ? "border-border bg-card/60 hover:border-primary/35"
-                        : "border-primary/45 bg-card shadow-lg shadow-primary/10",
+                      ehRecomendado
+                        ? "border-primary/45 bg-card shadow-lg shadow-primary/10"
+                        : "border-border bg-card/60 hover:border-primary/35",
                     )}
                   >
-                    {/* O destaque acompanha o plano que NÃO é o padrão do
-                        teste — mesma regra que já decidia a borda. */}
-                    {!ehPadrao && (
+                    {/* Um selo só, no plano recomendado. A regra anterior
+                        marcava todo plano que não fosse o padrão — com três
+                        planos, isso poria o selo no Plus E no Pro. */}
+                    {ehRecomendado && (
                       <span className="absolute -top-3 right-6 rounded-full border border-primary/40 bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground">
                         Recomendado
                       </span>
@@ -112,11 +119,11 @@ export function PlansSection({ plans }: PlansSectionProps) {
                         href={buildRegisterUrl(intencao)}
                         className={cn(
                           buttonVariants({
-                            variant: ehPadrao ? "outline" : "default",
+                            variant: ehRecomendado ? "default" : "outline",
                             size: "lg",
                           }),
                           "w-full",
-                          ehPadrao && "border-border bg-card/60 hover:bg-card",
+                          !ehRecomendado && "border-border bg-card/60 hover:bg-card",
                         )}
                       >
                         Começar com o {plano.name}

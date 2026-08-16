@@ -51,9 +51,39 @@ export const DEFAULT_PLAN_SLUG = "standard";
 //
 // Ver PlanRepository.listPublic(), que percorre esta lista para montar o
 // resultado: o que não está aqui não pode sair de lá.
-export const PUBLIC_PLAN_SLUGS = [DEFAULT_PLAN_SLUG, "pro"] as const;
+export const PUBLIC_PLAN_SLUGS = [DEFAULT_PLAN_SLUG, "plus", "pro"] as const;
 
 export type PublicPlanSlug = (typeof PUBLIC_PLAN_SLUGS)[number];
+
+// Nome comercial de cada plano — fonte única.
+//
+// Fica aqui, e não em `prisma/seed-plans.ts`, porque a interface também
+// precisa nomear um plano a partir do slug (o aviso de intenção, por exemplo,
+// só recebe o slug). Com o nome no seed, ou a tela consultava o banco para
+// escrever uma frase, ou repetia a string — e a repetida divergiria no dia em
+// que um plano fosse renomeado. O seed lê este mapa.
+export const PUBLIC_PLAN_NAMES: Record<PublicPlanSlug, string> = {
+  standard: "Fluxy Standard",
+  plus: "Fluxy Plus",
+  pro: "Fluxy Pro",
+};
+
+// Plano recomendado na vitrine. É posicionamento comercial, não regra de
+// produto: não concede nada, não altera limite e não influencia cobrança.
+export const RECOMMENDED_PLAN_SLUG: PublicPlanSlug = "plus";
+
+// Planos que dão direito ao teste grátis.
+//
+// Lista, e não um `!== DEFAULT_PLAN_SLUG`, porque a pergunta "este plano tem
+// trial?" precisa continuar respondível quando existir um quarto plano. O
+// cadastro só provisiona o plano padrão, então na prática nenhum caminho cria
+// TRIALING fora daqui — esta lista é o que a interface consulta para não
+// prometer teste onde ele não existe.
+export const PLAN_SLUGS_WITH_TRIAL: readonly PublicPlanSlug[] = [DEFAULT_PLAN_SLUG];
+
+export function planHasTrial(slug: string): boolean {
+  return (PLAN_SLUGS_WITH_TRIAL as readonly string[]).includes(slug);
+}
 
 // Periodicidades de cobrança. Fica aqui, junto dos slugs públicos, porque é a
 // outra metade da mesma pergunta comercial — "qual plano, cobrado como?" — e

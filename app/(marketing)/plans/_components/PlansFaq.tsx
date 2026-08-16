@@ -12,7 +12,9 @@ import { TRIAL_DURATION_DAYS } from "@/lib/constants";
 const PERGUNTAS = [
   {
     pergunta: "Qual plano vale durante o teste?",
-    resposta: `Durante os ${TRIAL_DURATION_DAYS} dias, todas as contas usam os limites do plano Standard, mesmo quem escolheu o Pro. Os limites maiores passam a valer com o pagamento confirmado.`,
+    // "mesmo quem escolheu o Pro" ficou incorreto com três planos: quem
+    // escolhe o Plus está no mesmo caso e não era mencionado.
+    resposta: `O teste grátis é do plano Standard. Durante os ${TRIAL_DURATION_DAYS} dias, todas as contas usam os limites do Standard, mesmo quem escolheu um plano pago. Os limites maiores passam a valer com o pagamento confirmado.`,
   },
   {
     pergunta: "Posso mudar de plano depois?",

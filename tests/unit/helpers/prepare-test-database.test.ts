@@ -138,8 +138,8 @@ describe("a preparação é mínima e não usa instrução destrutiva ampla", ()
 });
 
 describe("catálogo de planos — fonte única", () => {
-  it("declara exatamente standard e pro", () => {
-    expect([...PLAN_SLUGS]).toEqual(["standard", "pro"]);
+  it("declara exatamente standard, plus e pro", () => {
+    expect([...PLAN_SLUGS]).toEqual(["standard", "plus", "pro"]);
   });
 
   it("preserva os limites que os testes de integração afirmam", () => {
