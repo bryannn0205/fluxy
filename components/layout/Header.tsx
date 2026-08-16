@@ -23,9 +23,15 @@ export function Header({
   role,
 }: HeaderProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b px-4 lg:px-6">
+    // `sticky`: as listas do painel são longas, e as notificações e o menu do
+    // usuário são justamente o que se procura no meio de uma rolagem.
+    //
+    // Sem campo de busca: não existe busca global no projeto — nem rota, nem
+    // action, nem índice. Desenhar a caixa aqui criaria um controle que não
+    // responde, que é pior que a ausência dele.
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md lg:px-6">
       <MobileNav role={role} />
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-2">
         <NotificationBell notifications={notifications} unreadCount={unreadCount} />
         <UserMenu name={userName} email={userEmail} image={userImage} />
       </div>

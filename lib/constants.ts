@@ -169,12 +169,18 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   CANCELLED: "Cancelado",
 };
 
+/**
+ * Tons translúcidos, e não os `-50`/`-700` de antes: o selo só aparece dentro
+ * do painel, que passou a ser escuro, e uma pastilha de fundo claro virava um
+ * bloco luminoso no meio da tabela. Com `/15` no fundo e `-300` no texto, o
+ * mesmo selo funciona sobre a linha da tabela e sobre o cartão.
+ */
 export const ORDER_STATUS_STYLES: Record<OrderStatus, string> = {
-  PENDING: "bg-amber-50 text-amber-700 border-amber-200",
-  PROCESSING: "bg-blue-50 text-blue-700 border-blue-200",
-  READY: "bg-violet-50 text-violet-700 border-violet-200",
-  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  PENDING: "bg-amber-400/15 text-amber-300 border-amber-400/25",
+  PROCESSING: "bg-sky-400/15 text-sky-300 border-sky-400/25",
+  READY: "bg-violet-400/15 text-violet-300 border-violet-400/25",
+  COMPLETED: "bg-emerald-400/15 text-emerald-300 border-emerald-400/25",
+  CANCELLED: "bg-red-400/15 text-red-300 border-red-400/25",
 };
 
 // Transições de status permitidas — ver OrderService.updateStatus.

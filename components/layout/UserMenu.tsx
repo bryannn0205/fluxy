@@ -34,7 +34,7 @@ function getInitials(name: string): string {
 export function UserMenu({ name, email, image }: UserMenuProps) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 rounded-md p-1 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <DropdownMenuTrigger className="flex min-h-11 items-center gap-2 rounded-lg px-1.5 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
         <Avatar className="size-8">
           {image && <AvatarImage src={image} alt="" />}
           <AvatarFallback>{getInitials(name)}</AvatarFallback>

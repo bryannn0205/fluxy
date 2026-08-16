@@ -15,10 +15,13 @@ export function MobileNav({ role }: { role: Role }) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
+          // `size-11` sobrepõe os 32px do tamanho "icon": é o controle
+          // principal de navegação no celular, e 44px é o alvo de toque que
+          // Apple e Material recomendam para o dedo.
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className="size-11 lg:hidden"
             aria-label="Abrir menu"
           >
             <Menu className="size-5" aria-hidden="true" />

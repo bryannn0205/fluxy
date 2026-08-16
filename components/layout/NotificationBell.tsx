@@ -43,7 +43,7 @@ export function NotificationBell({ notifications, unreadCount }: NotificationBel
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="relative flex size-11 items-center justify-center rounded-lg text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={
           unreadCount > 0
             ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`

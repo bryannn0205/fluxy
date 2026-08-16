@@ -45,7 +45,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         title="Pedidos"
         description="Acompanhe e gerencie os pedidos da sua empresa."
         action={
-          <div className="flex items-center gap-2">
+          // `flex-wrap`: com exportação e criação lado a lado — o que só
+          // acontece para quem tem as duas permissões — os dois botões não
+          // cabiam em 375px e empurravam a página para o lado.
+          <div className="flex flex-wrap items-center gap-2">
             {canExport && <ExportOrdersButton search={search} status={status} />}
             {canCreate && (
               <CreateOrderDialog
