@@ -1,4 +1,4 @@
-import { CheckCircle2, ClipboardList, Factory, Boxes } from "lucide-react";
+import { Boxes, CheckCircle2, ChevronRight, ClipboardList, Factory } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Reveal } from "@/app/(marketing)/_components/Reveal";
@@ -23,11 +23,14 @@ const ETAPAS: Etapa[] = [
 /**
  * O caminho que um pedido percorre, da criação à entrega.
  *
- * Sem marquee. A referência anima uma faixa de notificações em laço, e o
- * efeito custa repaint contínuo numa página que já carrega gradientes grandes
- * — para quatro cartões que cabem na tela, o movimento não acrescentaria
- * informação nenhuma. No celular a faixa vira rolagem horizontal por gesto,
- * que a pessoa controla, em vez de laço automático que ela persegue.
+ * Sem marquee. A referência anima uma faixa de notificações em laço, e o efeito
+ * custa repaint contínuo numa página que já carrega gradientes grandes — para
+ * quatro cartões que cabem na tela, o movimento não acrescentaria informação.
+ *
+ * Também sem rolagem horizontal. A primeira versão usava `overflow-x-auto` no
+ * celular, e isso escondia metade do fluxo atrás de um gesto que nada anuncia:
+ * a pessoa via um cartão e meio e não tinha como saber que havia mais. Grade de
+ * duas colunas mostra as quatro etapas de uma vez, na mesma altura de tela.
  */
 export function FlowStrip() {
   return (
@@ -47,37 +50,31 @@ export function FlowStrip() {
           </p>
         </Reveal>
 
-        {/* `overflow-x-auto` com `snap`: no celular a faixa rola por gesto sem
-            empurrar a página inteira para o lado. */}
-        <div className="-mx-4 mt-12 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-          <ol className="flex min-w-max items-stretch gap-3 sm:grid sm:min-w-0 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-            {ETAPAS.map((etapa, indice) => (
-              <Reveal
-                as="li"
-                key={etapa.titulo}
-                delay={indice * 70}
-                className="relative w-56 shrink-0 sm:w-auto"
-              >
-                <div className="h-full rounded-2xl border border-border bg-card/80 p-5">
-                  <span className="inline-flex size-9 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-[var(--mkt-lavender)]">
-                    <etapa.icone className="size-4.5" aria-hidden="true" />
-                  </span>
-                  <p className="mt-4 text-sm font-semibold">{etapa.titulo}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{etapa.detalhe}</p>
-                </div>
+        <ol className="mt-12 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {ETAPAS.map((etapa, indice) => (
+            <Reveal as="li" key={etapa.titulo} delay={indice * 70} className="relative">
+              <div className="h-full rounded-2xl border border-border bg-card/80 p-4 sm:p-5">
+                <span className="inline-flex size-9 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-[var(--mkt-lavender)]">
+                  <etapa.icone className="size-4" aria-hidden="true" />
+                </span>
+                <p className="mt-4 text-sm font-semibold text-balance">{etapa.titulo}</p>
+                <p className="mt-1 text-xs text-pretty text-muted-foreground">
+                  {etapa.detalhe}
+                </p>
+              </div>
 
-                {/* Conector: some no último item e nas larguras em que os
-                    cartões deixam de ficar lado a lado. */}
-                {indice < ETAPAS.length - 1 && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-1/2 -right-3 hidden h-px w-3 bg-border lg:block"
-                  />
-                )}
-              </Reveal>
-            ))}
-          </ol>
-        </div>
+              {/* Seta, e não um traço: a linha de 1px que havia aqui antes
+                  desaparecia sobre o fundo escuro e a ideia de sequência não
+                  chegava a se ler. Só entra onde os quatro ficam lado a lado. */}
+              {indice < ETAPAS.length - 1 && (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="absolute top-1/2 -right-3 hidden size-4 -translate-y-1/2 text-primary/60 lg:block"
+                />
+              )}
+            </Reveal>
+          ))}
+        </ol>
       </div>
     </section>
   );

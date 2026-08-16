@@ -175,8 +175,11 @@
   --muted-foreground: oklch(0.75 0.022 288);
   --accent: oklch(0.24 0.05 296);
   --accent-foreground: oklch(0.975 0.006 286);
-  --border: oklch(0.72 0.16 300 / 16%);
-  --input: oklch(0.72 0.16 300 / 24%);
+  /* 16% deixava a borda dos cartões invisível sobre o fundo quase preto — a
+     grade lia como blocos flutuando, sem contorno. 24% desenha o cartão sem
+     virar moldura. */
+  --border: oklch(0.72 0.16 300 / 24%);
+  --input: oklch(0.72 0.16 300 / 30%);
   --ring: oklch(0.72 0.17 300);
 
   --brand: oklch(0.48 0.22 296);

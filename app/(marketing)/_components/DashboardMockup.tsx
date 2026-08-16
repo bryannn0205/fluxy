@@ -18,11 +18,6 @@ const TONS_DE_STATUS: Record<(typeof PEDIDOS)[number]["tom"], string> = {
   entregue: "bg-emerald-400/15 text-emerald-300",
 };
 
-interface DashboardMockupProps {
-  /** Compacta a peça para caber ao lado de um texto, em vez de sozinha. */
-  compacto?: boolean;
-}
-
 /**
  * Composição ilustrativa do painel, em HTML e CSS.
  *
@@ -36,7 +31,7 @@ interface DashboardMockupProps {
  * escuro da landing quanto sobre a seção clara do meio da página, e precisa ser
  * a mesma janela de produto nos dois lugares.
  */
-export function DashboardMockup({ compacto = false }: DashboardMockupProps) {
+export function DashboardMockup() {
   return (
     <div className="relative">
       <p className="sr-only">
@@ -56,27 +51,28 @@ export function DashboardMockup({ compacto = false }: DashboardMockupProps) {
           <span className="ml-2 text-xs text-white/45">Painel</span>
         </div>
 
-        <div className={`grid gap-3 p-4 ${compacto ? "grid-cols-3" : "sm:grid-cols-3"}`}>
+        {/* Três colunas já no celular: empilhados, os indicadores esticavam a
+            peça por quase 300px de altura e empurravam a lista de pedidos —
+            a parte que de fato mostra o produto — para fora da primeira tela. */}
+        <div className="grid grid-cols-3 gap-2 p-3 sm:gap-3 sm:p-4">
           {METRICAS.map((metrica) => (
             <div
               key={metrica.rotulo}
-              className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5"
+              className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 sm:p-3.5"
             >
-              <p className="truncate text-[10px] tracking-wide text-white/45 uppercase">
+              <p className="text-[11px] leading-tight tracking-wide text-white/50 uppercase">
                 {metrica.rotulo}
               </p>
-              <p
-                className={`mt-1.5 font-mono text-white tabular-nums ${compacto ? "text-base" : "text-xl"}`}
-              >
+              <p className="mt-1.5 font-mono text-sm text-white tabular-nums sm:text-xl">
                 {metrica.valor}
               </p>
             </div>
           ))}
         </div>
 
-        <div className="px-4 pb-4">
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="rounded-xl border border-white/10 bg-white/[0.03]">
-            <p className="border-b border-white/10 px-4 py-2.5 text-[10px] tracking-wide text-white/45 uppercase">
+            <p className="border-b border-white/10 px-4 py-2.5 text-[11px] tracking-wide text-white/50 uppercase">
               Pedidos recentes
             </p>
             <ul className="divide-y divide-white/5">

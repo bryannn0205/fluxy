@@ -4,7 +4,6 @@ import { ArrowRight, Check } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { DashboardMockup } from "@/app/(marketing)/_components/DashboardMockup";
 import { Reveal } from "@/app/(marketing)/_components/Reveal";
 
 const BENEFICIOS = [
@@ -12,6 +11,18 @@ const BENEFICIOS = [
   "Acompanhamento da operação pelo status de cada pedido",
   "Menos retrabalho: o dado é lançado uma vez e circula entre os módulos",
   "Acesso rápido aos dados de clientes, produtos e estoque",
+];
+
+/**
+ * Estados reais pelos quais um pedido passa no Fluxy. As quantidades são
+ * fictícias e servem só para dar forma — daí o bloco ser `aria-hidden`, com a
+ * descrição textual ao lado.
+ */
+const STATUS = [
+  { rotulo: "Recebido", qtd: "12", cor: "bg-amber-500", texto: "text-amber-700" },
+  { rotulo: "Em produção", qtd: "17", cor: "bg-sky-500", texto: "text-sky-700" },
+  { rotulo: "Pronto", qtd: "8", cor: "bg-violet-500", texto: "text-violet-700" },
+  { rotulo: "Entregue", qtd: "91", cor: "bg-emerald-500", texto: "text-emerald-700" },
 ];
 
 /**
@@ -61,12 +72,47 @@ export function LightHighlight() {
           </Reveal>
 
           <Reveal delay={100}>
-            <div className="relative">
-              {/* Sombra colorida em vez de glow: sobre fundo claro, um halo
-                  luminoso sujaria o branco. */}
-              <div className="rounded-2xl shadow-2xl shadow-primary/20">
-                <DashboardMockup />
+            {/* Cartões de status, e não a mesma peça de painel usada no hero e
+                no bloco de produto. Repetir a terceira cópia da mesma janela
+                fazia a página parecer ter um print só; aqui o assunto é outro —
+                a operação vista por situação — e a composição acompanha. */}
+            <p className="sr-only">
+              Ilustração da distribuição de pedidos por situação no Fluxy: recebidos, em
+              produção, prontos e entregues. As quantidades mostradas são fictícias.
+            </p>
+
+            <div
+              aria-hidden="true"
+              className="rounded-2xl border border-border bg-card p-5 shadow-xl shadow-primary/10 sm:p-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold">Pedidos por situação</p>
+                <span className="text-xs text-muted-foreground">Este mês</span>
               </div>
+
+              <ul className="mt-5 space-y-3">
+                {STATUS.map((status) => (
+                  <li
+                    key={status.rotulo}
+                    className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/60 px-4 py-3"
+                  >
+                    <span className={cn("size-2 shrink-0 rounded-full", status.cor)} />
+                    <span className="flex-1 text-sm">{status.rotulo}</span>
+                    <span
+                      className={cn(
+                        "font-mono text-sm font-semibold tabular-nums",
+                        status.texto,
+                      )}
+                    >
+                      {status.qtd}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="mt-5 border-t border-border/70 pt-4 text-xs text-muted-foreground">
+                Cada pedido muda de situação sozinho conforme a operação anda.
+              </p>
             </div>
           </Reveal>
         </div>

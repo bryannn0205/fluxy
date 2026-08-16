@@ -71,16 +71,22 @@ export function MarketingHeader() {
         )}
 
         <div className="flex items-center gap-2">
+          {/* `h-10` sobrepõe a altura de 28px do tamanho "sm": é o único
+              caminho de volta para quem já tem conta, e 28px de altura é alvo
+              apertado demais para o dedo. */}
           <Link
             href={ROUTES.LOGIN}
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-4")}
           >
             Entrar
           </Link>
           {naLanding && (
             <Link
               href={ROUTES.PLANS}
-              className={cn(buttonVariants({ size: "sm" }), "hidden md:inline-flex")}
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "hidden h-10 px-4 md:inline-flex",
+              )}
             >
               Começar grátis
             </Link>
