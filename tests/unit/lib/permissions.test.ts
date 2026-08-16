@@ -51,9 +51,11 @@ describe("matriz de permissões", () => {
     });
   });
 
-  describe("OPERATOR — o dia a dia, sem custo e sem gestão", () => {
-    it("vê valores do pedido, porque precisa deles para vender", () => {
-      expect(can("OPERATOR", "orders", "viewFinancials")).toBe(true);
+  describe("OPERATOR — o dia a dia, sem nenhum valor", () => {
+    it("não vê valores do pedido", () => {
+      // Executar o pedido não exige saber quanto o cliente pagou: itens,
+      // quantidade, prazo e observação bastam para produzir e entregar.
+      expect(can("OPERATOR", "orders", "viewFinancials")).toBe(false);
     });
 
     it("não recebe custo nem margem de produto", () => {
@@ -86,13 +88,30 @@ describe("matriz de permissões", () => {
     });
   });
 
-  describe("MANAGER — operação completa, sem desfazer dinheiro", () => {
-    it("registra pagamento", () => {
-      expect(can("MANAGER", "finance", "registerPayment")).toBe(true);
+  describe("MANAGER — operação completa, sem nenhum acesso a dinheiro", () => {
+    it("conduz a operação inteira", () => {
+      expect(can("MANAGER", "orders", "create")).toBe(true);
+      expect(can("MANAGER", "orders", "updateStatus")).toBe(true);
+      expect(can("MANAGER", "orders", "delete")).toBe(true);
+      expect(can("MANAGER", "production", "updateStage")).toBe(true);
+      expect(can("MANAGER", "stock", "adjust")).toBe(true);
+      expect(can("MANAGER", "products", "update")).toBe(true);
     });
 
-    it("não estorna nem cancela pagamento", () => {
+    it("não vê valor de pedido nem faturamento", () => {
+      expect(can("MANAGER", "orders", "viewFinancials")).toBe(false);
+      expect(can("MANAGER", "reports", "viewSales")).toBe(false);
+      expect(can("MANAGER", "reports", "viewFinancial")).toBe(false);
+    });
+
+    it("não acessa o financeiro nem registra ou estorna pagamento", () => {
+      expect(can("MANAGER", "finance", "view")).toBe(false);
+      expect(can("MANAGER", "finance", "registerPayment")).toBe(false);
       expect(can("MANAGER", "finance", "refund")).toBe(false);
+    });
+
+    it("não exporta pedidos — o CSV carrega os valores que ele não pode ver", () => {
+      expect(can("MANAGER", "orders", "export")).toBe(false);
     });
 
     it("não altera a assinatura do Fluxy", () => {

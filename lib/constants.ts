@@ -132,14 +132,19 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 // O que cada papel faz, em uma linha — exibido ao escolher papel num convite
 // ou ao alterar o de um membro. Quem convida precisa entender a consequência
-// sem abrir a documentação. Ver lib/permissions.ts para a matriz completa.
+// sem abrir a documentação.
+//
+// **Estas frases descrevem a matriz de lib/permissions.ts e precisam mudar
+// junto com ela.** A anterior dizia que o Gerente via "toda a operação e os
+// valores"; quando MANAGER perdeu o acesso financeiro, a frase virou promessa
+// falsa na tela de convite — que é onde alguém decide o que está concedendo.
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
-  OWNER: "Controle total, incluindo plano e cobrança",
-  ADMIN: "Gerencia equipe, configurações e toda a operação",
-  MANAGER: "Toda a operação e os valores, sem mexer em equipe",
-  OPERATOR: "Cria e toca pedidos no dia a dia; não vê custos nem relatórios",
-  FINANCE: "Valores, pagamentos e relatórios; não altera pedidos",
-  VIEWER: "Somente leitura da operação, sem nenhum valor financeiro",
+  OWNER: "Controle total da empresa, incluindo plano, cobrança e equipe",
+  ADMIN: "Administra a operação, a equipe e os valores financeiros",
+  MANAGER: "Gerencia pedidos, clientes, produtos, estoque e produção, sem ver valores",
+  OPERATOR: "Executa pedidos e produção, sem acesso financeiro",
+  FINANCE: "Acessa valores, faturamento e pagamentos, sem operar pedidos ou produção",
+  VIEWER: "Consulta a operação sem poder alterar nada, e sem ver valores",
 };
 
 // Chaves de módulo usadas em Plan.modules para o gate de acesso.

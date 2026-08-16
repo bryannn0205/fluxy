@@ -443,11 +443,13 @@ describe.skipIf(!prisma)("Financeiro dos pedidos", () => {
   describe("permissões", () => {
     const como = (role: ActingCompany["role"]) => ({ ...companyA, role });
 
-    it("MANAGER registra pagamento", async () => {
+    it("MANAGER não registra pagamento — perdeu o acesso financeiro", async () => {
+      // O gerente conduz a operação; dinheiro deixou de ser escopo dele.
+      // A recusa vem do service, não da tela: esta chamada não passa por UI.
       const id = await novoPedido();
       await expect(
         financeService!.registerPayment(lancamento(id, 10), como("MANAGER"), userA),
-      ).resolves.toBeDefined();
+      ).rejects.toThrow(ForbiddenError);
     });
 
     it("MANAGER não estorna", async () => {

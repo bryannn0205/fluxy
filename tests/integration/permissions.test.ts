@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ForbiddenError } from "@/lib/errors";
+import { can } from "@/lib/permissions";
 import { PrismaOrderRepository } from "@/repositories/implementations/PrismaOrderRepository";
 import { PrismaCustomerRepository } from "@/repositories/implementations/PrismaCustomerRepository";
 import { PrismaProductRepository } from "@/repositories/implementations/PrismaProductRepository";
@@ -17,7 +18,11 @@ import { ReportService } from "@/services/ReportService";
 import { StockService } from "@/services/StockService";
 import { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import { toClientProduct, toClientProductWithCosts } from "@/types/products";
-import { redactOrderFinancials, toClientOrderListItem } from "@/types/orders";
+import {
+  ORDER_FINANCIAL_FIELDS,
+  redactOrderFinancials,
+  toClientOrderListItem,
+} from "@/types/orders";
 
 import { createTestPrismaClient } from "../helpers/prisma";
 import { buildPlanLimitService } from "../helpers/services";
@@ -191,6 +196,47 @@ describe.skipIf(!prisma)("Permissões por papel", () => {
   });
 
   describe("OPERATOR", () => {
+    it("NÃO recebe o faturamento do painel", async () => {
+      // Era exatamente este o vazamento relatado: o painel entregava
+      // "Faturamento do mês" a qualquer papel porque a página não lia `role`.
+      const stats = await orderService!.getStats(companyA.id, "OPERATOR");
+
+      expect(stats.monthRevenue).toBeNull();
+      expect(JSON.stringify(stats)).not.toMatch(/monthRevenue":\s*\d/);
+    });
+
+    it("continua recebendo as contagens de que precisa para trabalhar", async () => {
+      const stats = await orderService!.getStats(companyA.id, "OPERATOR");
+
+      expect(stats.pendingCount).toBeTypeOf("number");
+      expect(stats.processingCount).toBeTypeOf("number");
+      expect(stats.readyCount).toBeTypeOf("number");
+    });
+
+    it("NÃO recebe os valores do pedido — nem por chamada direta ao service", async () => {
+      const pedido = await orderService!.findById(orderId, companyA.id);
+      const redigido = redactOrderFinancials(pedido!);
+
+      for (const campo of ORDER_FINANCIAL_FIELDS) {
+        expect(campo in redigido).toBe(false);
+      }
+      for (const item of redigido.items) {
+        expect("unitPrice" in item).toBe(false);
+        expect("total" in item).toBe(false);
+      }
+    });
+
+    it("NÃO exporta pedidos — o CSV carrega os valores", async () => {
+      expect(can("OPERATOR", "orders", "export")).toBe(false);
+    });
+
+    it("NÃO acessa o relatório de vendas nem o financeiro", async () => {
+      await expect(
+        reportService!.getSalesReport(companyA.id, 30, "OPERATOR"),
+      ).rejects.toThrow(ForbiddenError);
+      expect(can("OPERATOR", "finance", "view")).toBe(false);
+    });
+
     it("não recebe custo nem margem do produto", async () => {
       const produto = await productService!.findById(productId, companyA.id);
       const visto = toClientProduct(produto!);
@@ -281,9 +327,20 @@ describe.skipIf(!prisma)("Permissões por papel", () => {
       ).resolves.not.toThrow();
     });
 
-    it("acessa o relatório de vendas", async () => {
-      const relatorio = await reportService!.getSalesReport(companyA.id, 30, "MANAGER");
-      expect(relatorio.summary).toBeDefined();
+    it("NÃO acessa o relatório de vendas", async () => {
+      // Faturamento, ticket médio e ranking por receita saíram do escopo do
+      // gerente. O service recusa mesmo chamado direto, sem passar pela tela.
+      await expect(
+        reportService!.getSalesReport(companyA.id, 30, "MANAGER"),
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it("NÃO recebe o faturamento do painel", async () => {
+      const stats = await orderService!.getStats(companyA.id, "MANAGER");
+
+      expect(stats.monthRevenue).toBeNull();
+      // As contagens operacionais continuam — ele precisa delas para gerenciar.
+      expect(stats.pendingCount).toBeTypeOf("number");
     });
   });
 

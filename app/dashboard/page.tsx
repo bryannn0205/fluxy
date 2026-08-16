@@ -16,8 +16,10 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatCurrency, formatDate, formatOrderNumber } from "@/lib/formatters";
 import { DEFAULT_PLAN_SLUG, ROUTES } from "@/lib/constants";
+import { can } from "@/lib/permissions";
 import { parsePlanIntent } from "@/lib/plan-intent";
 import { requireCompany } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { orderService, productService } from "@/services";
 
 export const metadata: Metadata = { title: "Painel" };
@@ -29,7 +31,18 @@ interface DashboardPageProps {
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   // A autorização vem daqui e SÓ daqui: sessão, empresa e papel. A query
   // string abaixo não participa desta linha nem de nenhuma decisão de acesso.
-  const { companyId } = await requireCompany();
+  const { companyId, role } = await requireCompany();
+
+  // Duas permissões distintas porque são dois dados distintos: o faturamento
+  // agregado do mês é indicador de vendas; o total de cada pedido é valor do
+  // pedido. Um papel pode ter um sem o outro.
+  //
+  // Quem barra de fato é o servidor — `orderService.getStats` já devolve
+  // `monthRevenue: null` sem `reports:viewSales`, e o total do pedido é
+  // removido do objeto antes de virar HTML. As checagens aqui decidem o que
+  // renderizar; não são o portão.
+  const podeVerFaturamento = can(role, "reports", "viewSales");
+  const podeVerValorDoPedido = can(role, "orders", "viewFinancials");
 
   // Usada exclusivamente para uma mensagem. Revalidada mesmo tendo sido
   // gerada por `buildPostAuthUrl` no passo anterior — a URL é do usuário, e
@@ -44,7 +57,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const mostrarAvisoDoPro = planIntent !== null && planIntent.plan !== DEFAULT_PLAN_SLUG;
 
   const [stats, recentOrders, lowStockProducts] = await Promise.all([
-    orderService.getStats(companyId),
+    orderService.getStats(companyId, role),
     orderService.list(companyId, { pageSize: 5 }),
     productService.listLowStock(companyId),
   ]);
@@ -93,20 +106,31 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </Link>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Faturamento do mês
-            </CardTitle>
-            <DollarSign className="size-4 text-muted-foreground" aria-hidden="true" />
-          </CardHeader>
-          <CardContent>
-            <p className="font-mono text-2xl font-semibold tabular-nums">
-              {formatCurrency(stats.monthRevenue)}
-            </p>
-          </CardContent>
-        </Card>
+      {/* A grade acompanha o número de cartões: com o faturamento oculto,
+          quatro colunas mantêm a linha cheia em vez de deixar um vão. */}
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4 sm:grid-cols-2",
+          podeVerFaturamento ? "lg:grid-cols-5" : "lg:grid-cols-4",
+        )}
+      >
+        {/* `monthRevenue` vem `null` do serviço quando o papel não pode vê-lo;
+            a comparação abaixo é o que impede um `formatCurrency(null)`. */}
+        {podeVerFaturamento && stats.monthRevenue !== null && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Faturamento do mês
+              </CardTitle>
+              <DollarSign className="size-4 text-muted-foreground" aria-hidden="true" />
+            </CardHeader>
+            <CardContent>
+              <p className="font-mono text-2xl font-semibold tabular-nums">
+                {formatCurrency(stats.monthRevenue)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -197,9 +221,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       {formatDate(order.createdAt)}
                     </span>
                     <StatusBadge status={order.status} />
-                    <span className="font-mono text-sm tabular-nums">
-                      {formatCurrency(Number(order.total))}
-                    </span>
+                    {podeVerValorDoPedido && (
+                      <span className="font-mono text-sm tabular-nums">
+                        {formatCurrency(Number(order.total))}
+                      </span>
+                    )}
                   </div>
                 </Link>
               ))}

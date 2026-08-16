@@ -1,5 +1,5 @@
 import type { Company, OrderStatus, Role } from "@/lib/generated/prisma/client";
-import { assertPermission } from "@/lib/permissions";
+import { assertPermission, can } from "@/lib/permissions";
 import { assertValidOrderAmounts, buildOrderTotals } from "@/lib/order-totals";
 import { remainingAmount } from "@/lib/payment-status";
 import { logger } from "@/lib/logger";
@@ -28,13 +28,18 @@ import type {
 import type {
   OrderListOptions,
   OrderRepository,
-  OrderStats,
 } from "@/repositories/interfaces/OrderRepository";
 import type { CustomerRepository } from "@/repositories/interfaces/CustomerRepository";
 import type { ProductRepository } from "@/repositories/interfaces/ProductRepository";
 import type { CreateOrderInput, UpdateOrderDetailsInput } from "@/schemas/order.schema";
 import type { PaginatedResult } from "@/types/common";
-import type { KanbanOrder, OrderListItem, OrderWithRelations } from "@/types/orders";
+import {
+  toDashboardStats,
+  type DashboardStats,
+  type KanbanOrder,
+  type OrderListItem,
+  type OrderWithRelations,
+} from "@/types/orders";
 import type { AuditService } from "@/services/AuditService";
 import type { SubscriptionGateService } from "@/services/SubscriptionGateService";
 import type { NotificationService } from "@/services/NotificationService";
@@ -427,8 +432,22 @@ export class OrderService {
     return this.repository.list(companyId, options);
   }
 
-  async getStats(companyId: string): Promise<OrderStats> {
-    return this.repository.getStats(companyId);
+  /**
+   * Indicadores do painel, já sem o que o papel não pode ver.
+   *
+   * O `role` é obrigatório de propósito. A versão anterior recebia só o
+   * `companyId` e devolvia `monthRevenue` a qualquer um que chamasse — o painel
+   * não checava nada, e OPERATOR via o faturamento do mês. Exigir o papel na
+   * assinatura faz o compilador cobrar a decisão em cada chamador novo, em vez
+   * de deixá-la para quem lembrar.
+   *
+   * Redige em vez de lançar: as contagens operacionais ao lado são legítimas
+   * para todos os papéis, e negar a chamada inteira tiraria do operador o
+   * painel de trabalho junto com o dinheiro.
+   */
+  async getStats(companyId: string, role: Role): Promise<DashboardStats> {
+    const stats = await this.repository.getStats(companyId);
+    return toDashboardStats(stats, can(role, "reports", "viewSales"));
   }
 
   async listForKanban(companyId: string): Promise<KanbanOrder[]> {

@@ -47,7 +47,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar role={company.role} />
       <div className="flex flex-1 flex-col">
         <Header
           userName={session?.user?.name ?? ""}
@@ -55,6 +55,7 @@ export default async function DashboardLayout({
           userImage={session?.user?.image ?? null}
           notifications={notifications}
           unreadCount={unreadCount}
+          role={company.role}
         />
         <TrialBanner
           trialEndsAt={company.trialEndsAt}

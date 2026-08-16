@@ -6,8 +6,9 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NavContent } from "@/components/layout/NavContent";
+import type { Role } from "@/lib/generated/prisma/client";
 
-export function MobileNav() {
+export function MobileNav({ role }: { role: Role }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -27,7 +28,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-64 p-0">
         <SheetTitle className="sr-only">Navegação</SheetTitle>
         <div onClick={() => setOpen(false)}>
-          <NavContent />
+          <NavContent role={role} />
         </div>
       </SheetContent>
     </Sheet>

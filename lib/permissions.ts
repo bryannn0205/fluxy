@@ -22,8 +22,15 @@ const PERMISSIONS = {
   orders: {
     /** Dados operacionais: número, cliente, itens, quantidade, status, prazo. */
     view: ["OWNER", "ADMIN", "MANAGER", "OPERATOR", "FINANCE", "VIEWER"],
-    /** Preço unitário, subtotal, desconto, total e forma de pagamento. */
-    viewFinancials: ["OWNER", "ADMIN", "MANAGER", "OPERATOR", "FINANCE"],
+    /**
+     * Preço unitário, subtotal, desconto, total e forma de pagamento.
+     *
+     * OPERATOR e MANAGER saíram por menor privilégio. O operador executa o
+     * pedido — itens, quantidade, prazo, observação — e nada disso exige saber
+     * quanto o cliente pagou. O gerente conduz a operação, e a política do
+     * produto passou a separar conduzir de enxergar dinheiro.
+     */
+    viewFinancials: ["OWNER", "ADMIN", "FINANCE"],
     create: ["OWNER", "ADMIN", "MANAGER", "OPERATOR"],
     update: ["OWNER", "ADMIN", "MANAGER", "OPERATOR"],
     updateStatus: ["OWNER", "ADMIN", "MANAGER", "OPERATOR"],
@@ -32,7 +39,12 @@ const PERMISSIONS = {
     delete: ["OWNER", "ADMIN", "MANAGER"],
     // Ler na tela é uma coisa; levar a base de clientes e faturamento num
     // arquivo é outra. É o vetor clássico de saída de dados.
-    export: ["OWNER", "ADMIN", "MANAGER", "FINANCE"],
+    //
+    // MANAGER saiu junto com `viewFinancials`: o CSV carrega subtotal,
+    // desconto, total, valor pago e forma de pagamento (ver OrderExportRow em
+    // types/orders.ts). Mantê-lo aqui devolveria pela exportação exatamente o
+    // que a tela deixou de mostrar.
+    export: ["OWNER", "ADMIN", "FINANCE"],
   },
 
   products: {
@@ -71,19 +83,22 @@ const PERMISSIONS = {
   reports: {
     /** Contagens e prazos, sem valor monetário. */
     viewOperational: ["OWNER", "ADMIN", "MANAGER", "OPERATOR", "FINANCE", "VIEWER"],
-    /** Faturamento, ticket médio, ranking por receita. */
-    viewSales: ["OWNER", "ADMIN", "MANAGER", "FINANCE"],
-    /** Contas a receber, fluxo de caixa, inadimplência (Fase C). */
-    viewFinancial: ["OWNER", "ADMIN", "MANAGER", "FINANCE"],
+    /**
+     * Faturamento, ticket médio, ranking por receita.
+     *
+     * Também governa o indicador de faturamento do painel: é o mesmo dado, e
+     * criar uma `dashboard:viewFinancial` só para ele daria dois nomes para uma
+     * decisão — o tipo de duplicata que faz as duas divergirem com o tempo.
+     */
+    viewSales: ["OWNER", "ADMIN", "FINANCE"],
+    /** Contas a receber, fluxo de caixa, inadimplência. */
+    viewFinancial: ["OWNER", "ADMIN", "FINANCE"],
   },
 
-  // Declarado agora para a Fase C nascer com o gate certo, em vez de ganhar
-  // permissão depois — quando "depois" costuma virar "nunca".
   finance: {
-    view: ["OWNER", "ADMIN", "MANAGER", "FINANCE"],
-    registerPayment: ["OWNER", "ADMIN", "MANAGER", "FINANCE"],
-    // Estorno e cancelamento desfazem dinheiro já conciliado. MANAGER recebe,
-    // mas não desfaz.
+    view: ["OWNER", "ADMIN", "FINANCE"],
+    registerPayment: ["OWNER", "ADMIN", "FINANCE"],
+    // Estorno e cancelamento desfazem dinheiro já conciliado.
     refund: ["OWNER", "ADMIN", "FINANCE"],
   },
 

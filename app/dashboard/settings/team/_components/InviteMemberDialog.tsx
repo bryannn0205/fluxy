@@ -34,7 +34,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { inviteMemberSchema, type InviteMemberInput } from "@/schemas/team.schema";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/constants";
 import { inviteMemberAction } from "@/app/dashboard/settings/team/actions";
 
 // OWNER fora da lista: conceder posse é sensível demais para caber num convite
@@ -135,14 +135,29 @@ export function InviteMemberDialog() {
                         </SelectValue>
                       </SelectTrigger>
                     </FormControl>
+                    {/* A descrição acompanha o nome na própria lista: quem
+                        convida decide ali, e "Operador" sozinho não diz que
+                        aquele acesso exclui valores. */}
                     <SelectContent>
                       {INVITABLE_ROLES.map((role) => (
                         <SelectItem key={role} value={role}>
-                          {ROLE_LABELS[role]}
+                          <span className="flex flex-col gap-0.5 text-left">
+                            <span className="font-medium">{ROLE_LABELS[role]}</span>
+                            <span className="text-xs text-pretty text-muted-foreground">
+                              {ROLE_DESCRIPTIONS[role]}
+                            </span>
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* Repetida fora da lista porque, fechado, o gatilho mostra
+                      só o nome do papel escolhido. */}
+                  {field.value && (
+                    <p className="text-xs text-pretty text-muted-foreground">
+                      {ROLE_DESCRIPTIONS[field.value as InviteMemberInput["role"]]}
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

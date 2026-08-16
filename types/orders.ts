@@ -1,4 +1,5 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
+import type { OrderStats as OrderStatsData } from "@/repositories/interfaces/OrderRepository";
 
 export type OrderWithRelations = Prisma.OrderGetPayload<{
   include: {
@@ -107,6 +108,34 @@ export function toClientOrderListItem(
 ): ClientOrderListItem {
   const { total, ...resto } = order;
   return { ...resto, total: canViewFinancials ? Number(total) : null };
+}
+
+/**
+ * Indicadores do painel já filtrados pelo papel de quem pergunta.
+ *
+ * `monthRevenue` é `number | null` pela mesma convenção de
+ * {@link ClientOrderListItem.total}: `null` significa "este papel não pode ver
+ * faturamento", nunca "a empresa não faturou". As contagens operacionais ao
+ * lado — pedidos no mês, em produção, prontos, atrasados — não carregam
+ * dinheiro e valem para todo mundo que enxerga o painel.
+ */
+export type DashboardStats = Omit<OrderStatsData, "monthRevenue"> & {
+  monthRevenue: number | null;
+};
+
+/**
+ * Apaga o faturamento de quem não tem `reports:viewSales`.
+ *
+ * A chave é descartada por desestruturação, e não zerada: um `monthRevenue: 0`
+ * seria indistinguível de uma empresa que não vendeu, e ainda assim manteria o
+ * campo no payload — o que o inspetor do navegador mostraria.
+ */
+export function toDashboardStats(
+  stats: OrderStatsData,
+  canViewRevenue: boolean,
+): DashboardStats {
+  const { monthRevenue, ...resto } = stats;
+  return { ...resto, monthRevenue: canViewRevenue ? monthRevenue : null };
 }
 
 // Formato enxuto para o board de Produção — só os campos que um card do
