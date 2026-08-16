@@ -314,11 +314,13 @@ describe("não vaza dado interno", () => {
 });
 
 describe("cabeçalho na variante /plans", () => {
-  it("não repete as âncoras da landing nem 'Começar agora'", () => {
+  it("não repete as âncoras da landing nem 'Começar grátis'", () => {
     const { container } = render(<MarketingHeader />);
 
     expect(container.querySelectorAll('a[href^="#"]')).toHaveLength(0);
-    expect(screen.queryByRole("link", { name: "Começar agora" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Começar grátis" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /menu/i })).not.toBeInTheDocument();
   });
 

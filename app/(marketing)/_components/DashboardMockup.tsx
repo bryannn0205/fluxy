@@ -18,20 +18,25 @@ const TONS_DE_STATUS: Record<(typeof PEDIDOS)[number]["tom"], string> = {
   entregue: "bg-emerald-400/15 text-emerald-300",
 };
 
+interface DashboardMockupProps {
+  /** Compacta a peça para caber ao lado de um texto, em vez de sozinha. */
+  compacto?: boolean;
+}
+
 /**
  * Composição ilustrativa do painel, em HTML e CSS.
  *
- * Não é captura de tela, nem imagem: some do peso da página e continua
- * nítida em qualquer densidade. Os números são fictícios e existem só para
- * dar forma ao layout — por isso o bloco é `aria-hidden` e traz uma descrição
- * textual ao lado, para quem usa leitor de tela receber a informação em vez
- * de uma pilha de números sem contexto.
+ * Não é captura de tela, nem imagem: some do peso da página e continua nítida
+ * em qualquer densidade. Os números são fictícios e existem só para dar forma
+ * ao layout — por isso o bloco é `aria-hidden` e traz uma descrição textual ao
+ * lado, para quem usa leitor de tela receber a informação em vez de uma pilha
+ * de números sem contexto.
  *
- * As cores são fixas e escuras de propósito: o painel aparece em tema escuro
- * sobre uma landing clara, e seguir os tokens do tema faria a composição
- * clarear junto com a página e perder o contraste com a seção.
+ * As cores são fixas, e não tokens do tema: a peça aparece tanto sobre o fundo
+ * escuro da landing quanto sobre a seção clara do meio da página, e precisa ser
+ * a mesma janela de produto nos dois lugares.
  */
-export function DashboardMockup() {
+export function DashboardMockup({ compacto = false }: DashboardMockupProps) {
   return (
     <div className="relative">
       <p className="sr-only">
@@ -42,25 +47,27 @@ export function DashboardMockup() {
 
       <div
         aria-hidden="true"
-        className="overflow-hidden rounded-2xl border border-white/10 bg-[oklch(0.19_0.02_286)] shadow-2xl shadow-primary/10"
+        className="overflow-hidden rounded-2xl border border-white/12 bg-[oklch(0.17_0.02_288)] shadow-2xl ring-1 shadow-black/50 ring-white/5"
       >
-        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-          <span className="size-2.5 rounded-full bg-white/20" />
-          <span className="size-2.5 rounded-full bg-white/20" />
-          <span className="size-2.5 rounded-full bg-white/20" />
+        <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.02] px-4 py-3">
+          <span className="size-2.5 rounded-full bg-white/15" />
+          <span className="size-2.5 rounded-full bg-white/15" />
+          <span className="size-2.5 rounded-full bg-white/15" />
           <span className="ml-2 text-xs text-white/45">Painel</span>
         </div>
 
-        <div className="grid gap-4 p-4 sm:grid-cols-3">
+        <div className={`grid gap-3 p-4 ${compacto ? "grid-cols-3" : "sm:grid-cols-3"}`}>
           {METRICAS.map((metrica) => (
             <div
               key={metrica.rotulo}
-              className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
+              className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5"
             >
-              <p className="text-[11px] tracking-wide text-white/45 uppercase">
+              <p className="truncate text-[10px] tracking-wide text-white/45 uppercase">
                 {metrica.rotulo}
               </p>
-              <p className="mt-1.5 font-mono text-xl text-white tabular-nums">
+              <p
+                className={`mt-1.5 font-mono text-white tabular-nums ${compacto ? "text-base" : "text-xl"}`}
+              >
                 {metrica.valor}
               </p>
             </div>
@@ -69,7 +76,7 @@ export function DashboardMockup() {
 
         <div className="px-4 pb-4">
           <div className="rounded-xl border border-white/10 bg-white/[0.03]">
-            <p className="border-b border-white/10 px-4 py-2.5 text-[11px] tracking-wide text-white/45 uppercase">
+            <p className="border-b border-white/10 px-4 py-2.5 text-[10px] tracking-wide text-white/45 uppercase">
               Pedidos recentes
             </p>
             <ul className="divide-y divide-white/5">

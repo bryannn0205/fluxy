@@ -15,8 +15,8 @@ const SUPORTE_EMAIL = "suporte@fluxy.com.br";
  */
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-border bg-muted/40">
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <footer className="border-t border-border/60 bg-[var(--mkt-surface)]/30">
+      <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
         <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           <div className="max-w-xs space-y-3">
             <FluxyLogo />
@@ -92,7 +92,7 @@ export function MarketingFooter() {
           </div>
         </div>
 
-        <p className="mt-10 border-t border-border pt-6 text-xs text-muted-foreground">
+        <p className="mt-12 border-t border-border/60 pt-6 text-xs text-muted-foreground">
           © {new Date().getFullYear()} Fluxy
         </p>
       </div>

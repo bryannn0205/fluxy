@@ -13,7 +13,14 @@ import { MarketingFooter } from "@/app/(marketing)/_components/MarketingFooter";
  */
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    // `marketing` troca os tokens de cor para a paleta escura das páginas
+    // públicas — ver o bloco correspondente em app/globals.css. O escopo é
+    // esta árvore: o painel continua respondendo ao tema escolhido.
+    //
+    // `bg-background` precisa estar aqui, e não só no `body`: o body pinta
+    // usando os tokens de fora deste escopo, e sem esta camada a página
+    // ficaria clara por baixo do conteúdo escuro.
+    <div className="marketing flex min-h-screen flex-col bg-background text-foreground">
       <MarketingHeader />
       {/* Alvo do "Pular para o conteúdo" declarado no layout raiz. */}
       <main id="main-content" className="flex-1">

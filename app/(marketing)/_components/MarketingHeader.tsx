@@ -43,7 +43,7 @@ export function MarketingHeader() {
   }, [menuAberto]);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link
           href={ROUTES.HOME}
@@ -82,7 +82,7 @@ export function MarketingHeader() {
               href={ROUTES.PLANS}
               className={cn(buttonVariants({ size: "sm" }), "hidden md:inline-flex")}
             >
-              Começar agora
+              Começar grátis
             </Link>
           )}
 
@@ -119,7 +119,7 @@ export function MarketingHeader() {
         <div
           id={ID_MENU_MOBILE}
           hidden={!menuAberto}
-          className="border-t border-border/70 bg-background md:hidden"
+          className="border-t border-border/60 bg-background md:hidden"
         >
           <nav aria-label="Navegação do site em dispositivo móvel" className="px-4 py-4">
             <ul className="flex flex-col gap-1">
@@ -144,7 +144,7 @@ export function MarketingHeader() {
                 className={cn(buttonVariants({}), "w-full")}
                 onClick={() => setMenuAberto(false)}
               >
-                Começar agora
+                Começar grátis
               </Link>
             </div>
           </nav>

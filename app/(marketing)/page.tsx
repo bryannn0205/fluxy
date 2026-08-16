@@ -6,11 +6,15 @@ import { logger } from "@/lib/logger";
 import { planCatalogService } from "@/services";
 import type { PublicPlan } from "@/types/plans";
 import { Hero } from "@/app/(marketing)/_components/Hero";
-import { ValueStrip } from "@/app/(marketing)/_components/ValueStrip";
 import { Features } from "@/app/(marketing)/_components/Features";
+import { ProductShowcase } from "@/app/(marketing)/_components/ProductShowcase";
 import { HowItWorks } from "@/app/(marketing)/_components/HowItWorks";
+import { LightHighlight } from "@/app/(marketing)/_components/LightHighlight";
+import { BusinessBenefits } from "@/app/(marketing)/_components/BusinessBenefits";
+import { FlowStrip } from "@/app/(marketing)/_components/FlowStrip";
 import { PlansSection } from "@/app/(marketing)/_components/PlansSection";
 import { Faq } from "@/app/(marketing)/_components/Faq";
+import { FinalCta } from "@/app/(marketing)/_components/FinalCta";
 
 const TITULO = "Fluxy — Gestão de pedidos, produção e financeiro";
 const DESCRICAO =
@@ -62,11 +66,17 @@ export default async function LandingPage() {
   return (
     <>
       <Hero />
-      <ValueStrip />
       <Features />
+      <ProductShowcase />
       <HowItWorks />
+      {/* Corte claro no meio da página: quebra a sequência escura e devolve
+          fôlego antes dos blocos densos que vêm depois. */}
+      <LightHighlight />
+      <BusinessBenefits />
+      <FlowStrip />
       <PlansSection plans={plans} />
       <Faq />
+      <FinalCta />
     </>
   );
 }

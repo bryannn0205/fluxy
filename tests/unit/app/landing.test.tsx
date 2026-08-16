@@ -70,7 +70,7 @@ describe("Hero", () => {
   it("o CTA principal leva a /plans", () => {
     render(<Hero />);
 
-    expect(screen.getByRole("link", { name: /começar 14 dias grátis/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /começar grátis/i })).toHaveAttribute(
       "href",
       "/plans",
     );
@@ -79,7 +79,7 @@ describe("Hero", () => {
   it("o CTA secundário leva à âncora de como funciona", () => {
     render(<Hero />);
 
-    expect(screen.getByRole("link", { name: /ver como funciona/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /conhecer o fluxy/i })).toHaveAttribute(
       "href",
       "#como-funciona",
     );
@@ -107,13 +107,16 @@ describe("MarketingHeader", () => {
     expect(screen.getAllByText("Fluxy").length).toBeGreaterThan(0);
   });
 
-  it("Entrar aponta para /login e Começar agora para /plans", () => {
+  it("Entrar aponta para /login e Começar grátis para /plans", () => {
     render(<MarketingHeader />);
 
     for (const link of screen.getAllByRole("link", { name: "Entrar" })) {
       expect(link).toHaveAttribute("href", "/login");
     }
-    for (const link of screen.getAllByRole("link", { name: "Começar agora" })) {
+
+    const comecar = screen.getAllByRole("link", { name: "Começar grátis" });
+    expect(comecar.length).toBeGreaterThan(0);
+    for (const link of comecar) {
       expect(link).toHaveAttribute("href", "/plans");
     }
   });
@@ -265,7 +268,14 @@ describe("Features e HowItWorks", () => {
   it("cada recurso tem título e descrição", () => {
     render(<Features />);
 
-    for (const titulo of ["Pedidos", "Clientes", "Produtos", "Estoque", "Relatórios"]) {
+    for (const titulo of [
+      "Pedidos organizados",
+      "Clientes centralizados",
+      "Controle de estoque",
+      "Produção visual",
+      "Gestão de equipe",
+      "Histórico da operação",
+    ]) {
       expect(screen.getByRole("heading", { name: titulo })).toBeInTheDocument();
     }
   });

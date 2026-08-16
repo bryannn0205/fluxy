@@ -12,5 +12,4 @@ export const MARKETING_NAV_LINKS = [
   { href: "#recursos", label: "Recursos" },
   { href: "#como-funciona", label: "Como funciona" },
   { href: "#planos", label: "Planos" },
-  { href: "#faq", label: "Dúvidas" },
 ] as const;

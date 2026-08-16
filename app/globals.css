@@ -140,6 +140,100 @@
   --sidebar-ring: oklch(0.74 0.155 296);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Páginas públicas (landing e planos).
+
+   A landing tem identidade própria: escura, quase preta, com roxo como único
+   acento — e é assim independentemente do tema que a pessoa escolheu para o
+   painel. Uma página de venda que muda de cara conforme a preferência do
+   sistema não tem identidade; e o visitante que ainda não criou conta sequer
+   passou por um seletor de tema.
+
+   Por isso os tokens são REDECLARADOS aqui em vez de ganharem nomes novos:
+   assim `bg-card`, `text-muted-foreground` e todo componente do design system
+   já existente adotam a paleta escura dentro deste escopo, sem uma segunda
+   versão de Card ou de Button. Fora de `.marketing` nada muda — o painel
+   continua lendo `:root` e `.dark` como sempre leu.
+
+   Contrastes conferidos contra WCAG 2.1 AA: texto secundário fica em ~7,5:1
+   sobre as superfícies, e o roxo dos botões foi mantido em L≈0.48 justamente
+   porque acima disso o branco por cima cai abaixo de 4,5:1. Vivo é bom;
+   ilegível não é.
+   ───────────────────────────────────────────────────────────────────────── */
+.marketing {
+  --background: oklch(0.115 0.014 288);
+  --foreground: oklch(0.975 0.006 286);
+  --card: oklch(0.155 0.018 288);
+  --card-foreground: oklch(0.975 0.006 286);
+  --popover: oklch(0.155 0.018 288);
+  --popover-foreground: oklch(0.975 0.006 286);
+  --primary: oklch(0.48 0.22 296);
+  --primary-foreground: oklch(0.99 0.004 286);
+  --secondary: oklch(0.22 0.03 292);
+  --secondary-foreground: oklch(0.975 0.006 286);
+  --muted: oklch(0.19 0.022 290);
+  --muted-foreground: oklch(0.75 0.022 288);
+  --accent: oklch(0.24 0.05 296);
+  --accent-foreground: oklch(0.975 0.006 286);
+  --border: oklch(0.72 0.16 300 / 16%);
+  --input: oklch(0.72 0.16 300 / 24%);
+  --ring: oklch(0.72 0.17 300);
+
+  --brand: oklch(0.48 0.22 296);
+  --brand-accent: oklch(0.56 0.2 316);
+
+  /* Exclusivos da landing. Lavanda carrega destaque de texto (10:1 sobre o
+     fundo); o glow é só para as manchas de luz do fundo, nunca para texto. */
+  --mkt-lavender: oklch(0.85 0.1 300);
+  --mkt-glow: oklch(0.55 0.25 296);
+  --mkt-surface: oklch(0.185 0.022 290);
+}
+
+/* A seção clara que corta a página no meio. Mesmos nomes de token, valores
+   invertidos — o conteúdo dentro dela não precisa saber que está numa ilha. */
+.marketing-light {
+  --background: oklch(0.976 0.005 290);
+  --foreground: oklch(0.19 0.02 288);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.19 0.02 288);
+  --primary: oklch(0.47 0.204 293);
+  --primary-foreground: oklch(0.985 0.005 293);
+  --muted: oklch(0.955 0.008 292);
+  --muted-foreground: oklch(0.44 0.03 288);
+  --accent: oklch(0.948 0.026 293);
+  --accent-foreground: oklch(0.35 0.11 293);
+  --border: oklch(0.5 0.12 300 / 18%);
+  --ring: oklch(0.47 0.204 293);
+}
+
+/* Entrada suave ao chegar na viewport.
+
+   O HTML nasce VISÍVEL: quem tem JavaScript desligado, e o rastreador que não
+   executa script, recebem a página inteira. O estado inicial da animação é
+   aplicado pelo próprio componente, e só em elemento que ainda está fora da
+   tela — o que já está visível no primeiro quadro nunca pisca. */
+.mkt-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.mkt-reveal[data-visivel="sim"] {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
