@@ -15,7 +15,7 @@ interface PipelineDonutProps {
   prontos: number;
 }
 
-const RAIO = 52;
+const RAIO = 54;
 const CIRCUNFERENCIA = 2 * Math.PI * RAIO;
 
 /**
@@ -61,7 +61,7 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
   return (
     <section
       aria-labelledby="titulo-pipeline"
-      className="flex flex-col rounded-2xl border border-border bg-card p-5 sm:p-6"
+      className="flex h-full flex-col rounded-2xl border border-border bg-card/80 p-5 sm:p-6"
     >
       <h2 id="titulo-pipeline" className="text-base font-semibold">
         Pedidos em aberto
@@ -70,11 +70,11 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
         Distribuição por etapa da operação
       </p>
 
-      <div className="mt-5 flex flex-1 flex-col items-center gap-6 sm:flex-row sm:gap-7">
+      <div className="mt-6 flex flex-1 flex-col items-center gap-7 sm:flex-row sm:gap-8">
         <div className="relative shrink-0">
           <svg
             viewBox="0 0 128 128"
-            className="size-32"
+            className="size-36"
             role="presentation"
             aria-hidden="true"
           >
@@ -84,7 +84,7 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
               r={RAIO}
               fill="none"
               stroke="currentColor"
-              strokeWidth="14"
+              strokeWidth="16"
               className="text-muted"
             />
             {arcos.map((arco) =>
@@ -96,7 +96,7 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
                   r={RAIO}
                   fill="none"
                   stroke={arco.cor}
-                  strokeWidth="14"
+                  strokeWidth="16"
                   strokeDasharray={`${arco.tamanho} ${CIRCUNFERENCIA - arco.tamanho}`}
                   strokeDashoffset={-arco.inicio}
                   // Gira o início do primeiro arco para o topo do círculo.
@@ -107,17 +107,19 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
           </svg>
 
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-mono text-2xl font-semibold tabular-nums">{total}</span>
+            <span className="font-mono text-3xl font-semibold tracking-tight tabular-nums">
+              {total}
+            </span>
             <span className="text-[11px] text-muted-foreground">Total</span>
           </div>
         </div>
 
-        <ul className="w-full space-y-2.5">
+        <ul className="w-full space-y-3">
           {arcos.map((arco) => (
-            <li key={arco.rotulo} className="flex items-center gap-2.5 text-sm">
+            <li key={arco.rotulo} className="flex items-center gap-3 text-sm">
               <span
                 aria-hidden="true"
-                className="size-2 shrink-0 rounded-full"
+                className="size-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: arco.cor }}
               />
               <span className="flex-1 text-muted-foreground">{arco.rotulo}</span>

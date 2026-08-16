@@ -300,6 +300,33 @@
 
   --panel-lavender: #a78bfa;
   --panel-glow: rgba(124, 58, 237, 0.22);
+  --panel-surface: #16142596;
+}
+
+/* Fundo do painel: preto profundo com duas manchas de violeta muito diluídas.
+
+   `background-attachment: fixed` mantém as manchas paradas enquanto o conteúdo
+   rola — sem isso elas acompanhariam a página e virariam faixas em movimento,
+   que é o oposto de atmosfera. São gradientes, não elementos com blur: pintam
+   uma vez e não custam repaint a cada rolagem. */
+.dashboard {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 40rem at 12% -8%, rgba(124, 58, 237, 0.16), transparent 62%),
+    radial-gradient(46rem 34rem at 96% 4%, rgba(139, 92, 246, 0.1), transparent 60%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* A sidebar recebe uma luz própria no topo, para não ler como um bloco chapado
+   ao lado do conteúdo. */
+.dashboard-sidebar {
+  background-color: var(--sidebar);
+  background-image: radial-gradient(
+    24rem 18rem at 20% 0%,
+    rgba(124, 58, 237, 0.14),
+    transparent 68%
+  );
 }
 
 /* Entrada do bloco de acesso: aparece uma vez, no carregamento.

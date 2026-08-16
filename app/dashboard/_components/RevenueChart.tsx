@@ -48,56 +48,131 @@ export function RevenueChart({ pontos, periodo }: RevenueChartProps) {
 
   const area = `${linha} L ${LARGURA} ${ALTURA} L 0 ${ALTURA} Z`;
 
+  // Quatro marcas de grade, do topo ao zero. Sem eixo numérico completo: os
+  // valores exatos vivem no resumo acima e na tabela abaixo, e uma escala densa
+  // sobre 30 pontos viraria ruído.
+  const marcas = [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
+    fracao,
+    y: MARGEM_TOPO + (ALTURA - MARGEM_TOPO) * fracao,
+    valor: escala * (1 - fracao),
+  }));
+
+  // Cinco marcas no eixo do tempo, distribuídas pelo período. Trinta rótulos
+  // se sobreporiam; dois (só as pontas) não deixam localizar o pico.
+  const QUANTIDADE_DE_MARCAS = 5;
+  const marcasDoEixo =
+    pontos.length === 0
+      ? []
+      : Array.from({ length: QUANTIDADE_DE_MARCAS }, (_, indice) => {
+          const posicao = Math.round(
+            (indice * (pontos.length - 1)) / (QUANTIDADE_DE_MARCAS - 1),
+          );
+          return pontos[posicao]!.date;
+        });
+
   return (
     <section
       aria-labelledby="titulo-faturamento"
-      className="rounded-2xl border border-border bg-card p-5 sm:p-6"
+      className="flex flex-col rounded-2xl border border-border bg-card/80 p-5 sm:p-6"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div>
           <h2 id="titulo-faturamento" className="text-base font-semibold">
             Faturamento
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">Últimos {periodo}</p>
         </div>
-        <p className="font-mono text-xl font-semibold tabular-nums">
-          {formatCurrency(total)}
-        </p>
+        <div className="text-right">
+          <p className="font-mono text-2xl leading-none font-semibold tracking-tight tabular-nums">
+            {formatCurrency(total)}
+          </p>
+          <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className="size-2 rounded-full bg-[var(--panel-lavender)]"
+            />
+            Faturamento no período
+          </p>
+        </div>
       </div>
 
-      <div className="-mx-1 mt-5 overflow-hidden">
-        <svg
-          viewBox={`0 0 ${LARGURA} ${ALTURA}`}
-          preserveAspectRatio="none"
-          role="presentation"
+      <div className="relative mt-6 flex-1">
+        {/* Grade atrás do traço, em SVG separado para não esticar junto com o
+            `preserveAspectRatio="none"` do gráfico — linhas horizontais não
+            distorcem, mas a espessura delas distorceria. */}
+        <div
           aria-hidden="true"
-          className="h-40 w-full sm:h-48"
+          className="pointer-events-none absolute inset-0 flex flex-col justify-between"
         >
-          <defs>
-            <linearGradient id="gradiente-faturamento" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
-            </linearGradient>
-          </defs>
+          {marcas.map((marca) => (
+            <div key={marca.fracao} className="flex items-center gap-3">
+              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-muted-foreground/55 tabular-nums">
+                {escalaCompacta(marca.valor)}
+              </span>
+              <span className="h-px flex-1 bg-border/45" />
+            </div>
+          ))}
+        </div>
 
-          <path d={area} fill="url(#gradiente-faturamento)" />
-          <path
-            d={linha}
-            fill="none"
-            stroke="#a78bfa"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
+        <div className="ml-[4.25rem] overflow-hidden">
+          <svg
+            viewBox={`0 0 ${LARGURA} ${ALTURA}`}
+            preserveAspectRatio="none"
+            role="presentation"
+            aria-hidden="true"
+            className="h-52 w-full sm:h-64"
+          >
+            <defs>
+              <linearGradient id="gradiente-faturamento" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+
+            <path d={area} fill="url(#gradiente-faturamento)" />
+            <path
+              d={linha}
+              fill="none"
+              stroke="#a78bfa"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        </div>
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground">
+      <div className="mt-3 ml-[4.25rem] flex items-center justify-between text-[10px] text-muted-foreground/70">
+        {marcasDoEixo.map((dia, indice) => (
+          <span key={`${dia}-${indice}`}>{formatarDia(dia)}</span>
+        ))}
+      </div>
+
+      <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
         {maximo === 0
           ? "Nenhuma venda registrada no período."
           : `Maior dia do período: ${formatCurrency(maximo)}.`}
       </p>
     </section>
   );
+}
+
+/** `YYYY-MM-DD` → `DD/MM`. A chave já vem normalizada para Brasília. */
+function formatarDia(chave: string): string {
+  const [, mes, dia] = chave.split("-");
+  return `${dia}/${mes}`;
+}
+
+/**
+ * Rótulo curto para a régua vertical.
+ *
+ * `formatCurrency` completo repetia centavos em cinco linhas empilhadas
+ * ("R$ 233,80 / R$ 175,35 / R$ 116,90…") e a régua competia com o traço. Aqui
+ * o número é referência de altura, não valor a conferir — o total exato está no
+ * cabeçalho do cartão e na tabela.
+ */
+function escalaCompacta(valor: number): string {
+  if (valor >= 1000) return `R$ ${Math.round(valor / 1000)}k`;
+  return `R$ ${Math.round(valor)}`;
 }

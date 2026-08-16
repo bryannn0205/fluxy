@@ -30,9 +30,9 @@ export function RecentOrders({ pedidos }: { pedidos: LinhaDePedido[] }) {
   return (
     <section
       aria-labelledby="titulo-pedidos-recentes"
-      className="rounded-2xl border border-border bg-card"
+      className="overflow-hidden rounded-2xl border border-border bg-card/80"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
         <h2 id="titulo-pedidos-recentes" className="text-base font-semibold">
           Pedidos recentes
         </h2>
@@ -61,23 +61,35 @@ export function RecentOrders({ pedidos }: { pedidos: LinhaDePedido[] }) {
           <div className="hidden sm:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left">
-                  <th scope="col" className="px-6 py-3 font-medium text-muted-foreground">
+                <tr className="border-b border-border bg-[var(--panel-surface)] text-left">
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+                  >
                     Pedido
                   </th>
-                  <th scope="col" className="px-6 py-3 font-medium text-muted-foreground">
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+                  >
                     Cliente
                   </th>
-                  <th scope="col" className="px-6 py-3 font-medium text-muted-foreground">
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+                  >
                     Etapa
                   </th>
-                  <th scope="col" className="px-6 py-3 font-medium text-muted-foreground">
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
+                  >
                     Data
                   </th>
                   {mostrarValor && (
                     <th
                       scope="col"
-                      className="px-6 py-3 text-right font-medium text-muted-foreground"
+                      className="px-6 py-3.5 text-right text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase"
                     >
                       Valor
                     </th>
@@ -88,9 +100,9 @@ export function RecentOrders({ pedidos }: { pedidos: LinhaDePedido[] }) {
                 {pedidos.map((pedido) => (
                   <tr
                     key={pedido.id}
-                    className="border-b border-border/60 transition-colors duration-150 last:border-0 hover:bg-accent/40"
+                    className="border-b border-border/45 transition-colors duration-150 last:border-0 hover:bg-accent/50"
                   >
-                    <td className="px-6 py-3.5">
+                    <td className="px-6 py-4">
                       <Link
                         href={ROUTES.ORDER_DETAIL(pedido.id)}
                         className="font-mono font-medium tabular-nums underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -98,17 +110,17 @@ export function RecentOrders({ pedidos }: { pedidos: LinhaDePedido[] }) {
                         {formatOrderNumber(pedido.numero)}
                       </Link>
                     </td>
-                    <td className="max-w-[16rem] truncate px-6 py-3.5">
+                    <td className="max-w-[16rem] truncate px-6 py-4 font-medium">
                       {pedido.cliente}
                     </td>
-                    <td className="px-6 py-3.5">
+                    <td className="px-6 py-4">
                       <StatusBadge status={pedido.status} />
                     </td>
-                    <td className="px-6 py-3.5 text-muted-foreground tabular-nums">
+                    <td className="px-6 py-4 text-muted-foreground tabular-nums">
                       {formatDate(pedido.criadoEm)}
                     </td>
                     {mostrarValor && (
-                      <td className="px-6 py-3.5 text-right font-mono tabular-nums">
+                      <td className="px-6 py-4 text-right font-mono font-medium tabular-nums">
                         {pedido.valor}
                       </td>
                     )}

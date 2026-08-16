@@ -30,20 +30,35 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "group rounded-2xl border border-border bg-card p-5 transition-colors duration-200 hover:border-primary/35",
-        destaque && "ring-1 ring-[var(--panel-glow)]",
+        "group relative h-full overflow-hidden rounded-2xl border border-border bg-card/80 p-5 transition-colors duration-200 hover:border-primary/40",
+        destaque && "border-primary/30 shadow-[0_0_44px_-20px] shadow-primary/80",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{rotulo}</p>
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-[var(--panel-lavender)] transition-colors duration-200 group-hover:border-primary/40">
-          <Icone className="size-4" aria-hidden="true" />
+      {/* O cartão de dinheiro ganha uma luz de canto; os de contagem ficam
+          lisos, para a hierarquia entre eles ser visível de relance. */}
+      {destaque && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-12 -right-8 size-32 [background:radial-gradient(50%_50%_at_50%_50%,var(--panel-glow)_0%,transparent_70%)]"
+        />
+      )}
+
+      <div className="relative flex items-start justify-between gap-3">
+        <p className="min-h-[2.4rem] pt-0.5 text-[13px] leading-snug font-medium text-muted-foreground">
+          {rotulo}
+        </p>
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/12 text-[var(--panel-lavender)] transition-colors duration-200 group-hover:border-primary/45 group-hover:bg-primary/20">
+          <Icone className="size-[1.05rem]" aria-hidden="true" />
         </span>
       </div>
 
-      <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">{valor}</p>
+      <p className="relative mt-4 font-mono text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
+        {valor}
+      </p>
 
-      {apoio && <p className="mt-1.5 text-xs text-muted-foreground">{apoio}</p>}
+      {apoio && (
+        <p className="relative mt-2.5 text-xs text-muted-foreground/80">{apoio}</p>
+      )}
     </div>
   );
 }
