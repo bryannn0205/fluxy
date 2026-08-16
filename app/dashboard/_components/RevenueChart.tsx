@@ -48,10 +48,10 @@ export function RevenueChart({ pontos, periodo }: RevenueChartProps) {
 
   const area = `${linha} L ${LARGURA} ${ALTURA} L 0 ${ALTURA} Z`;
 
-  // Quatro marcas de grade, do topo ao zero. Sem eixo numérico completo: os
+  // Seis marcas de grade, do topo ao zero. Sem eixo numérico completo: os
   // valores exatos vivem no resumo acima e na tabela abaixo, e uma escala densa
   // sobre 30 pontos viraria ruído.
-  const marcas = [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
+  const marcas = [0, 0.2, 0.4, 0.6, 0.8, 1].map((fracao) => ({
     fracao,
     y: MARGEM_TOPO + (ALTURA - MARGEM_TOPO) * fracao,
     valor: escala * (1 - fracao),
@@ -106,7 +106,7 @@ export function RevenueChart({ pontos, periodo }: RevenueChartProps) {
         >
           {marcas.map((marca) => (
             <div key={marca.fracao} className="flex items-center gap-3">
-              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-muted-foreground/55 tabular-nums">
+              <span className="w-11 shrink-0 text-right font-mono text-[10px] text-muted-foreground/55 tabular-nums">
                 {escalaCompacta(marca.valor)}
               </span>
               <span className="h-px flex-1 bg-border/45" />
@@ -114,17 +114,17 @@ export function RevenueChart({ pontos, periodo }: RevenueChartProps) {
           ))}
         </div>
 
-        <div className="ml-[4.25rem] overflow-hidden">
+        <div className="ml-[3.25rem] overflow-hidden">
           <svg
             viewBox={`0 0 ${LARGURA} ${ALTURA}`}
             preserveAspectRatio="none"
             role="presentation"
             aria-hidden="true"
-            className="h-52 w-full sm:h-64"
+            className="h-52 w-full sm:h-[15.5rem]"
           >
             <defs>
               <linearGradient id="gradiente-faturamento" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.45" />
+                <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.5" />
                 <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
               </linearGradient>
             </defs>
@@ -143,7 +143,7 @@ export function RevenueChart({ pontos, periodo }: RevenueChartProps) {
         </div>
       </div>
 
-      <div className="mt-3 ml-[4.25rem] flex items-center justify-between text-[10px] text-muted-foreground/70">
+      <div className="mt-3 ml-[3.25rem] flex items-center justify-between text-[10px] text-muted-foreground/70">
         {marcasDoEixo.map((dia, indice) => (
           <span key={`${dia}-${indice}`}>{formatarDia(dia)}</span>
         ))}

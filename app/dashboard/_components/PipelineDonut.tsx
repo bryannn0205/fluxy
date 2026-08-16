@@ -70,7 +70,7 @@ export function PipelineDonut({ recebidos, emProducao, prontos }: PipelineDonutP
         Distribuição por etapa da operação
       </p>
 
-      <div className="mt-6 flex flex-1 flex-col items-center gap-7 sm:flex-row sm:gap-8">
+      <div className="mt-6 flex flex-1 flex-col items-center justify-center gap-7 sm:flex-row sm:gap-8">
         <div className="relative shrink-0">
           <svg
             viewBox="0 0 128 128"

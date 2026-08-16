@@ -30,7 +30,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "group relative h-full overflow-hidden rounded-2xl border border-border bg-card/80 p-5 transition-colors duration-200 hover:border-primary/40",
+        "group relative h-full overflow-hidden rounded-2xl border border-border bg-card/80 p-5 transition-colors duration-200 hover:border-primary/40 sm:p-[1.375rem]",
         destaque && "border-primary/30 shadow-[0_0_44px_-20px] shadow-primary/80",
       )}
     >
@@ -44,7 +44,7 @@ export function StatCard({
       )}
 
       <div className="relative flex items-start justify-between gap-3">
-        <p className="min-h-[2.4rem] pt-0.5 text-[13px] leading-snug font-medium text-muted-foreground">
+        <p className="min-h-[2.2rem] pt-1 text-xs leading-snug font-medium text-muted-foreground">
           {rotulo}
         </p>
         <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/12 text-[var(--panel-lavender)] transition-colors duration-200 group-hover:border-primary/45 group-hover:bg-primary/20">
@@ -52,12 +52,12 @@ export function StatCard({
         </span>
       </div>
 
-      <p className="relative mt-4 font-mono text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
+      <p className="relative mt-3.5 font-mono text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
         {valor}
       </p>
 
       {apoio && (
-        <p className="relative mt-2.5 text-xs text-muted-foreground/80">{apoio}</p>
+        <p className="relative mt-2 text-[11px] text-muted-foreground/70">{apoio}</p>
       )}
     </div>
   );

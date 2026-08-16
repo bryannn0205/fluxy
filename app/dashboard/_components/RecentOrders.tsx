@@ -38,7 +38,7 @@ export function RecentOrders({ pedidos }: { pedidos: LinhaDePedido[] }) {
         </h2>
         <Link
           href={ROUTES.ORDERS}
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-[var(--panel-lavender)] transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-3.5 text-sm font-medium transition-colors duration-150 hover:border-primary/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           Ver todos os pedidos
           <ArrowRight className="size-4" aria-hidden="true" />

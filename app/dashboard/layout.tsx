@@ -121,9 +121,17 @@ export default async function DashboardLayout({
           trialEndsAt={company.trialEndsAt}
           status={company.subscriptionStatus}
         />
-        <main id="main-content" className="flex-1 px-4 pt-6 pb-10 lg:px-8">
+        <main id="main-content" className="flex-1 px-4 pt-6 pb-8 lg:px-8">
           <div className="mx-auto max-w-7xl space-y-6">{children}</div>
         </main>
+
+        {/* Fecha a composição no rodapé. O ano sai do relógio do servidor, não
+            é constante — um "© 2026" fixo envelhece sozinho na virada. */}
+        <footer className="px-4 pb-8 lg:px-8">
+          <p className="mx-auto max-w-7xl border-t border-border/50 pt-6 text-center text-xs text-muted-foreground/70">
+            © {new Date().getFullYear()} Fluxy. Todos os direitos reservados.
+          </p>
+        </footer>
       </div>
     </div>
   );
