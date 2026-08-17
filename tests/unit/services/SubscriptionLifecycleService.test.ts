@@ -94,14 +94,55 @@ function repositorio(inicial: Company = empresa()) {
       linha = { ...linha, subscriptionStatus: input.to };
       return true;
     },
-    listForLifecycleReview: async () =>
-      linha.validapaySubscriptionId !== null &&
-      (["ACTIVE", "PAST_DUE"] as SubscriptionStatus[]).includes(linha.subscriptionStatus)
-        ? [linha]
-        : [],
+    listForLifecycleReview: async () => (elegivel(linha) ? [linha] : []),
+    listForLifecycleReviewAcrossTenants: async () => (elegivel(linha) ? [linha] : []),
   };
 
   return { repo, transicoes, atual: () => linha };
+}
+
+/** Mesma seleção do repositório real: assinatura presente e estado revisável. */
+function elegivel(company: Company): boolean {
+  return (
+    company.validapaySubscriptionId !== null &&
+    (["ACTIVE", "PAST_DUE"] as SubscriptionStatus[]).includes(company.subscriptionStatus)
+  );
+}
+
+/**
+ * Repositório com VÁRIAS empresas, para a varredura agendada.
+ *
+ * A por empresa nunca vê mais de um tenant; a da plataforma vê todos, e é aí que
+ * lote, concorrência e tolerância a falha individual importam.
+ */
+function plataforma(empresas: Company[], limite = 50) {
+  const estado = new Map(empresas.map((e) => [e.id, { ...e }]));
+  const transicoes: TransitionSubscriptionStatusInput[] = [];
+
+  const repo: CompanyRepository = {
+    findById: async (id) => estado.get(id) ?? null,
+    findByEmail: async () => null,
+    createWithOwner: async () => empresas[0]!,
+    update: async () => empresas[0]!,
+    incrementOrderNumber: async () => 1,
+    findPlanByCompany: async () => null,
+    findByValidapaySubscriptionId: async (subscriptionId) =>
+      [...estado.values()].find((e) => e.validapaySubscriptionId === subscriptionId) ??
+      null,
+    transitionSubscriptionStatus: async (input) => {
+      transicoes.push(input);
+      const atual = estado.get(input.companyId);
+      if (!atual || !input.from.includes(atual.subscriptionStatus)) return false;
+      estado.set(input.companyId, { ...atual, subscriptionStatus: input.to });
+      return true;
+    },
+    listForLifecycleReview: async () => [],
+    // O `take` do Prisma, reproduzido: é o teto do lote que se quer testar.
+    listForLifecycleReviewAcrossTenants: async (take) =>
+      [...estado.values()].filter(elegivel).slice(0, Math.min(take, limite)),
+  };
+
+  return { repo, transicoes, estado };
 }
 
 function assinaturas(snapshot: SubscriptionSnapshot = assinatura()) {
@@ -464,5 +505,191 @@ describe("reconciliação supre webhook perdido", () => {
 
     expect(resumo).toMatchObject({ reviewed: 1, failed: 1, canceled: 0 });
     expect(ambiente.atual().subscriptionStatus).toBe("ACTIVE");
+  });
+});
+
+describe("varredura agendada, atravessando tenants", () => {
+  const VENCIDO = new Date("2026-08-19T10:00:00Z");
+
+  function comAssinatura(indice: number, status: SubscriptionStatus): Company {
+    return empresa({
+      id: `company_${indice}`,
+      subscriptionStatus: status,
+      validapaySubscriptionId: `sub_${indice}`,
+    });
+  }
+
+  /** Snapshot por assinatura, para diferenciar empresas no mesmo lote. */
+  function porAssinatura(mapa: Record<string, SubscriptionSnapshot>) {
+    return {
+      getSubscription: vi.fn(async (id: string) => mapa[id] ?? assinatura()),
+    } satisfies ValidaPaySubscriptionsGateway & {
+      getSubscription: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  function servicoDe(
+    ambiente: ReturnType<typeof plataforma>,
+    gw: ValidaPaySubscriptionsGateway,
+  ) {
+    return new SubscriptionLifecycleService(ambiente.repo, gw, cobrancas(), () => AGORA);
+  }
+
+  it("revisa empresa ACTIVE e efetiva cancelamento vencido", async () => {
+    const local = plataforma([comAssinatura(1, "ACTIVE")]);
+
+    const resumo = await servicoDe(
+      local,
+      porAssinatura({
+        sub_1: assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: VENCIDO,
+        }),
+      }),
+    ).revisarAssinaturasDaPlataforma();
+
+    expect(resumo).toMatchObject({ reviewed: 1, canceled: 1 });
+    expect(local.estado.get("company_1")!.subscriptionStatus).toBe("CANCELED");
+  });
+
+  it("revisa empresa PAST_DUE e a reativa com ciclo pago", async () => {
+    const local = plataforma([comAssinatura(1, "PAST_DUE")]);
+
+    const resumo = await servicoDe(
+      local,
+      porAssinatura({ sub_1: assinatura({ cicloAtualPago: true }) }),
+    ).revisarAssinaturasDaPlataforma();
+
+    expect(resumo).toMatchObject({ reviewed: 1, reactivated: 1 });
+    expect(local.estado.get("company_1")!.subscriptionStatus).toBe("ACTIVE");
+  });
+
+  it("ignora empresa sem validapaySubscriptionId", async () => {
+    const local = plataforma([
+      empresa({ id: "company_sem", validapaySubscriptionId: null }),
+      comAssinatura(1, "ACTIVE"),
+    ]);
+    const gw = porAssinatura({});
+
+    const resumo = await servicoDe(local, gw).revisarAssinaturasDaPlataforma();
+
+    expect(resumo.reviewed).toBe(1);
+    // Uma consulta só: a empresa sem assinatura não gera chamada externa.
+    expect(gw.getSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignora CANCELED e TRIALING", async () => {
+    const local = plataforma([
+      comAssinatura(1, "CANCELED"),
+      comAssinatura(2, "TRIALING"),
+      comAssinatura(3, "EXPIRED"),
+    ]);
+
+    const resumo = await servicoDe(
+      local,
+      porAssinatura({}),
+    ).revisarAssinaturasDaPlataforma();
+
+    expect(resumo.reviewed).toBe(0);
+    expect(local.transicoes).toHaveLength(0);
+  });
+
+  it("respeita o teto do lote", async () => {
+    const muitas = Array.from({ length: 70 }, (_, i) => comAssinatura(i, "ACTIVE"));
+    const local = plataforma(muitas);
+    const gw = porAssinatura({});
+
+    const resumo = await servicoDe(local, gw).revisarAssinaturasDaPlataforma();
+
+    // 50 é o teto: cada item custa uma chamada externa, e o que sobra entra na
+    // execução seguinte.
+    expect(resumo.reviewed).toBe(50);
+    expect(gw.getSubscription).toHaveBeenCalledTimes(50);
+  });
+
+  it("falha de uma empresa não interrompe as demais", async () => {
+    const local = plataforma([
+      comAssinatura(1, "ACTIVE"),
+      comAssinatura(2, "ACTIVE"),
+      comAssinatura(3, "ACTIVE"),
+    ]);
+
+    const gw = {
+      getSubscription: vi.fn(async (id: string) => {
+        if (id === "sub_2") throw new Error("indisponível");
+        return assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: VENCIDO,
+        });
+      }),
+    } as unknown as ValidaPaySubscriptionsGateway;
+
+    const resumo = await servicoDe(local, gw).revisarAssinaturasDaPlataforma();
+
+    expect(resumo).toMatchObject({ reviewed: 3, canceled: 2, failed: 1 });
+    expect(local.estado.get("company_1")!.subscriptionStatus).toBe("CANCELED");
+    expect(local.estado.get("company_2")!.subscriptionStatus).toBe("ACTIVE");
+    expect(local.estado.get("company_3")!.subscriptionStatus).toBe("CANCELED");
+  });
+
+  it("execução repetida é idempotente", async () => {
+    const local = plataforma([comAssinatura(1, "ACTIVE")]);
+    const service = servicoDe(
+      local,
+      porAssinatura({
+        sub_1: assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: VENCIDO,
+        }),
+      }),
+    );
+
+    const primeira = await service.revisarAssinaturasDaPlataforma();
+    const segunda = await service.revisarAssinaturasDaPlataforma();
+
+    expect(primeira.canceled).toBe(1);
+    // Já CANCELED: sai da seleção e não é revisada de novo.
+    expect(segunda).toMatchObject({ reviewed: 0, canceled: 0 });
+    expect(local.estado.get("company_1")!.subscriptionStatus).toBe("CANCELED");
+  });
+
+  it("cancelamento agendado no futuro mantém ACTIVE", async () => {
+    const local = plataforma([comAssinatura(1, "ACTIVE")]);
+
+    const resumo = await servicoDe(
+      local,
+      porAssinatura({
+        sub_1: assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: EFETIVO_EM,
+        }),
+      }),
+    ).revisarAssinaturasDaPlataforma();
+
+    expect(resumo).toMatchObject({ cancelScheduled: 1, canceled: 0 });
+    expect(local.estado.get("company_1")!.subscriptionStatus).toBe("ACTIVE");
+  });
+
+  it("cada transição nomeia a própria empresa", async () => {
+    const local = plataforma([comAssinatura(1, "ACTIVE"), comAssinatura(2, "ACTIVE")]);
+
+    await servicoDe(
+      local,
+      porAssinatura({
+        sub_1: assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: VENCIDO,
+        }),
+        sub_2: assinatura({
+          cancelamentoAgendado: true,
+          cancelamentoEfetivoEm: VENCIDO,
+        }),
+      }),
+    ).revisarAssinaturasDaPlataforma();
+
+    expect(local.transicoes.map((t) => t.companyId).sort()).toEqual([
+      "company_1",
+      "company_2",
+    ]);
   });
 });

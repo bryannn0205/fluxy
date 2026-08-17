@@ -128,6 +128,7 @@ function empresas(company = EMPRESA): CompanyRepository {
     findByValidapaySubscriptionId: async () => null,
     transitionSubscriptionStatus: async () => false,
     listForLifecycleReview: async () => [],
+    listForLifecycleReviewAcrossTenants: async () => [],
   };
 }
 

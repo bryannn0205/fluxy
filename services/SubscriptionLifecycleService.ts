@@ -124,6 +124,39 @@ export class SubscriptionLifecycleService {
       limit: LOTE_MAXIMO,
     });
 
+    return this.revisarLote(empresas, { companyId });
+  }
+
+  /**
+   * Varredura AGENDADA, atravessando tenants — sem sessão e sem usuário.
+   *
+   * Existe porque a revisão por empresa depende de alguém abrir uma tela, e
+   * cobrança real não pode depender disso: uma empresa que cancelou e nunca mais
+   * entra no Fluxy ficaria `ACTIVE` para sempre.
+   *
+   * **A regra de estados não é reimplementada aqui.** Este método só escolhe
+   * candidatos e chama `revisarEmpresa`, o mesmo caminho do webhook e da tela.
+   * A rota de cron, por sua vez, não conhece regra nenhuma: autentica e delega.
+   *
+   * Idempotente por construção — as transições são condicionais ao estado de
+   * partida. Isso importa em cron: a entrega da Vercel é "best effort" e a
+   * documentação avisa que uma execução pode ser perdida OU repetida.
+   */
+  async revisarAssinaturasDaPlataforma(): Promise<RevisaoDeAssinaturasResumo> {
+    const empresas =
+      await this.companies.listForLifecycleReviewAcrossTenants(LOTE_MAXIMO);
+
+    return this.revisarLote(empresas, { escopo: "plataforma" });
+  }
+
+  /**
+   * O laço de revisão, com lote e concorrência. Um só, para que a varredura
+   * agendada e a por empresa não possam divergir no tratamento de falha.
+   */
+  private async revisarLote(
+    empresas: Company[],
+    contexto: Record<string, string>,
+  ): Promise<RevisaoDeAssinaturasResumo> {
     const resumo: RevisaoDeAssinaturasResumo = {
       reviewed: empresas.length,
       canceled: 0,
@@ -146,7 +179,8 @@ export class SubscriptionLifecycleService {
           else if (resultado === "CANCELAMENTO_AGENDADO") resumo.cancelScheduled++;
         } catch (erro) {
           // Falha de um item não aborta o lote: a próxima empresa pode ter um
-          // cancelamento a efetivar.
+          // cancelamento a efetivar. Só o NOME do erro vai ao log — a mensagem
+          // de um gateway pode carregar dado de cliente.
           resumo.failed++;
           logger.warn("Falha ao revisar assinatura", {
             companyId: empresa.id,
@@ -163,7 +197,7 @@ export class SubscriptionLifecycleService {
 
     if (resumo.reviewed > 0) {
       logger.info("Revisão de assinaturas concluída", {
-        companyId,
+        ...contexto,
         resource: "subscription",
         ...resumo,
       });

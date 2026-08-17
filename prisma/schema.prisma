@@ -76,6 +76,19 @@ model Company {
   payments       Payment[]
 
   @@index([deletedAt])
+  /// Uma assinatura da ValidaPay pertence a UMA empresa.
+  ///
+  /// Único, e não apenas índice: duas empresas apontando para a mesma assinatura
+  /// é dado corrompido, e o webhook teria de escolher qual delas cancelar. A
+  /// restrição impede a corrupção em vez de deixar o código lidar com ela.
+  ///
+  /// **Múltiplos NULL são permitidos** — no PostgreSQL, `NULL` não é igual a
+  /// `NULL` num índice único, então toda empresa sem assinatura convive sem
+  /// conflito. É o caso da maioria: quem está em teste nunca teve assinatura.
+  ///
+  /// Também serve à consulta: a correlação de webhook e a varredura agendada
+  /// buscam por esta coluna, e sem índice seriam varredura de tabela.
+  @@unique([validapaySubscriptionId])
 }
 
 // Modela o plano de assinatura e quais módulos ele libera.

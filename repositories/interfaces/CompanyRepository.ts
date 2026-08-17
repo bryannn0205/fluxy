@@ -71,4 +71,17 @@ export interface CompanyRepository {
    * ValidaPay e estão num estado que pode ter divergido.
    */
   listForLifecycleReview(input: ListForLifecycleReviewInput): Promise<Company[]>;
+
+  /**
+   * Mesma seleção, **sem escopo de tenant** — para a execução agendada.
+   *
+   * Método PRÓPRIO, com o nome dizendo que atravessa tenants, e não um
+   * `companyId` opcional no método acima. A diferença é o ponto: com parâmetro
+   * opcional, esquecer o campo varreria o banco inteiro em silêncio, e a chamada
+   * ficaria indistinguível de uma consulta escopada. Aqui, varrer a plataforma
+   * exige escrever `AcrossTenants` — ninguém faz isso por acidente.
+   *
+   * Só o cron chama. Nenhuma action, nenhuma página.
+   */
+  listForLifecycleReviewAcrossTenants(limit: number): Promise<Company[]>;
 }

@@ -56,6 +56,15 @@ const envSchema = z.object({
   VALIDAPAY_WEBHOOK_SECRET: z.string().optional(),
   VALIDAPAY_WEBHOOK_TOKEN: z.string().optional(),
 
+  // Segredo da execução agendada (Vercel Cron). A Vercel envia este valor no
+  // header `Authorization`, com prefixo `Bearer`, ao invocar a rota de cron.
+  //
+  // Opcional no schema pela mesma razão das credenciais de pagamento: a
+  // aplicação sobe sem ele. Mas a rota FALHA FECHADA — sem o segredo, toda
+  // chamada é recusada com 401, e não existe modo permissivo. Ver
+  // app/api/cron/subscriptions/route.ts.
+  CRON_SECRET: z.string().optional(),
+
   // E-mail transacional — opcional; sem ele, e-mails são apenas logados.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Fluxy <naoresponda@fluxy.com.br>"),

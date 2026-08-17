@@ -181,6 +181,7 @@ function empresas(): CompanyRepository {
     findByValidapaySubscriptionId: async () => null,
     transitionSubscriptionStatus: async () => false,
     listForLifecycleReview: async () => [],
+    listForLifecycleReviewAcrossTenants: async () => [],
   };
 }
 

@@ -104,6 +104,20 @@ export class PrismaCompanyRepository implements CompanyRepository {
     });
   }
 
+  async listForLifecycleReviewAcrossTenants(limit: number): Promise<Company[]> {
+    return this.prisma.company.findMany({
+      where: {
+        deletedAt: null,
+        validapaySubscriptionId: { not: null },
+        subscriptionStatus: { in: ["ACTIVE", "PAST_DUE"] },
+      },
+      // Mais antigas primeiro: quem foi revisado há mais tempo entra antes, e um
+      // lote cheio não revisita sempre as mesmas empresas.
+      orderBy: { updatedAt: "asc" },
+      take: limit,
+    });
+  }
+
   async findPlanByCompany(companyId: string) {
     const company = await this.prisma.company.findUnique({
       where: { id: companyId },

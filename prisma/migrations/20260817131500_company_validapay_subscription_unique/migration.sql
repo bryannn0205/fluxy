@@ -1,0 +1,12 @@
+-- Uma assinatura da ValidaPay pertence a UMA empresa.
+--
+-- Único, e não apenas índice: duas empresas apontando para a mesma assinatura é
+-- dado corrompido, e o webhook teria de escolher qual delas cancelar.
+--
+-- Múltiplos NULL convivem sem conflito: no PostgreSQL, NULL não é igual a NULL
+-- num índice único. Verificado antes de criar — nos dois bancos, TODAS as
+-- empresas estão com a coluna nula e não existe nenhum valor repetido, então a
+-- restrição não pode falhar sobre dado existente.
+--
+-- CreateIndex
+CREATE UNIQUE INDEX "Company_validapaySubscriptionId_key" ON "Company"("validapaySubscriptionId");
