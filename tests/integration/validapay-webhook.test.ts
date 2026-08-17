@@ -7,14 +7,17 @@ import type * as EnvModule from "@/lib/env";
 import type { ValidaPaySubscriptionsGateway } from "@/lib/validapay/subscriptions";
 import { PrismaPaymentProviderEventRepository } from "@/repositories/implementations/PrismaPaymentProviderEventRepository";
 import { PrismaSubscriptionCheckoutRepository } from "@/repositories/implementations/PrismaSubscriptionCheckoutRepository";
+import { PrismaCompanyRepository } from "@/repositories/implementations/PrismaCompanyRepository";
 import { PaymentProviderEventService } from "@/services/PaymentProviderEventService";
 import type { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
+import type { SubscriptionLifecycleService } from "@/services/SubscriptionLifecycleService";
 
 import { createTestPrismaClient } from "../helpers/prisma";
 
 const prisma = createTestPrismaClient();
 const eventRepository = new PrismaPaymentProviderEventRepository(prisma);
 const checkoutRepository = new PrismaSubscriptionCheckoutRepository(prisma);
+const companyRepository = new PrismaCompanyRepository(prisma);
 
 const empresas: string[] = [];
 const hashes: string[] = [];
@@ -72,8 +75,28 @@ function corpoDe(payload: Record<string, unknown>) {
 }
 
 const assinaturas: ValidaPaySubscriptionsGateway = {
-  getSubscription: async (id) => ({ subscriptionId: id, status: "ACTIVE", metadata: {} }),
+  getSubscription: async (id) => ({
+    subscriptionId: id,
+    status: "ACTIVE",
+    cancelamentoAgendado: false,
+    cancelamentoEfetivoEm: null,
+    cancelamentoImediato: false,
+    cicloAtualPago: true,
+    metadata: {},
+  }),
 };
+
+/**
+ * Ciclo de vida ausente de propósito: estes testes cobrem o webhook do checkout
+ * inicial, quando a empresa ainda não tem `validapaySubscriptionId`.
+ * `NAO_CORRELACIONADA` é exatamente o que o serviço real devolveria ali, e é o
+ * que faz o fluxo cair no caminho da tentativa local.
+ */
+const cicloDeVida = {
+  revisarEmpresa: async () => "NAO_CORRELACIONADA" as const,
+  revisarPorAssinatura: async () => "NAO_CORRELACIONADA" as const,
+  registrarFalhaDeCiclo: async () => "NAO_CORRELACIONADA" as const,
+} as unknown as SubscriptionLifecycleService;
 
 function servicoCom(confirmar: ReturnType<typeof vi.fn>) {
   return new PaymentProviderEventService(
@@ -81,6 +104,8 @@ function servicoCom(confirmar: ReturnType<typeof vi.fn>) {
     checkoutRepository,
     { confirmarSeChargePago: confirmar } as unknown as SubscriptionCheckoutService,
     assinaturas,
+    cicloDeVida,
+    companyRepository,
   );
 }
 

@@ -176,6 +176,11 @@ function empresas(): CompanyRepository {
     update: async () => EMPRESA,
     incrementOrderNumber: async () => 1,
     findPlanByCompany: async () => PLUS,
+    // Ciclo de vida pós-pagamento não participa destes testes: eles cobrem a
+    // contratação. Ver paid-plan-lifecycle.test.ts.
+    findByValidapaySubscriptionId: async () => null,
+    transitionSubscriptionStatus: async () => false,
+    listForLifecycleReview: async () => [],
   };
 }
 

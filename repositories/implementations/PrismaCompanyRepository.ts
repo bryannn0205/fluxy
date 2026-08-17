@@ -2,6 +2,8 @@ import type { Company, PrismaClient } from "@/lib/generated/prisma/client";
 import type {
   CompanyRepository,
   CreateCompanyWithOwnerData,
+  ListForLifecycleReviewInput,
+  TransitionSubscriptionStatusInput,
 } from "@/repositories/interfaces/CompanyRepository";
 
 export class PrismaCompanyRepository implements CompanyRepository {
@@ -54,6 +56,52 @@ export class PrismaCompanyRepository implements CompanyRepository {
     data: Partial<Pick<Company, "name" | "phone">>,
   ): Promise<Company> {
     return this.prisma.company.update({ where: { id }, data });
+  }
+
+  async findByValidapaySubscriptionId(subscriptionId: string): Promise<Company | null> {
+    // `findFirst` e não `findUnique`: a coluna não tem índice único hoje. Duas
+    // empresas com o mesmo `subscriptionId` seria dado corrompido, não um caso
+    // a tratar — e pegar a primeira é melhor que lançar, porque lançar deixaria
+    // o evento sem desfecho. Ver a recomendação de `@@unique` no relatório.
+    return this.prisma.company.findFirst({
+      where: { validapaySubscriptionId: subscriptionId, deletedAt: null },
+    });
+  }
+
+  async transitionSubscriptionStatus(
+    input: TransitionSubscriptionStatusInput,
+  ): Promise<boolean> {
+    // `updateMany` com o estado de partida no WHERE: é a mesma técnica do claim
+    // de ativação. Duas entregas simultâneas do mesmo evento disputam a linha, a
+    // segunda reavalia o WHERE contra o valor já commitado e afeta zero linhas.
+    const { count } = await this.prisma.company.updateMany({
+      where: {
+        id: input.companyId,
+        deletedAt: null,
+        subscriptionStatus: { in: [...input.from] },
+      },
+      // Só o status. `planId` e `trialEndsAt` não aparecem aqui de propósito:
+      // cancelar não rebaixa plano nem recria teste.
+      data: { subscriptionStatus: input.to },
+    });
+
+    return count === 1;
+  }
+
+  async listForLifecycleReview(input: ListForLifecycleReviewInput): Promise<Company[]> {
+    return this.prisma.company.findMany({
+      where: {
+        id: input.companyId,
+        deletedAt: null,
+        validapaySubscriptionId: { not: null },
+        // TRIALING fica fora: não há assinatura paga para divergir. CANCELED e
+        // EXPIRED também: são terminais, e revisitá-los gastaria chamada externa
+        // para reconfirmar o que já está decidido.
+        subscriptionStatus: { in: ["ACTIVE", "PAST_DUE"] },
+      },
+      orderBy: { updatedAt: "asc" },
+      take: input.limit,
+    });
   }
 
   async findPlanByCompany(companyId: string) {

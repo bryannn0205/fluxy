@@ -21,6 +21,20 @@ const reconcilePending = vi.fn(async () => ({
   failed: 0,
 }));
 
+/**
+ * Segunda passada da action: revisão das assinaturas já ativas.
+ *
+ * É ela que efetiva um cancelamento agendado — nenhum webhook avisa quando
+ * `cancellation.effectiveAt` chega.
+ */
+const revisarAssinaturasDaEmpresa = vi.fn(async () => ({
+  reviewed: 1,
+  canceled: 0,
+  reactivated: 0,
+  cancelScheduled: 1,
+  failed: 0,
+}));
+
 /** Sessão ausente: `requireCompany` redireciona, e o redirect LANÇA no Next. */
 class RedirectError extends Error {
   constructor() {
@@ -37,12 +51,14 @@ function mockarSessao(sessao: { companyId: string; role: Role } | null) {
   }));
   vi.doMock("@/services", () => ({
     subscriptionReconciliationService: { reconcilePending },
+    subscriptionLifecycleService: { revisarAssinaturasDaEmpresa },
   }));
 }
 
 beforeEach(() => {
   vi.resetModules();
   reconcilePending.mockClear();
+  revisarAssinaturasDaEmpresa.mockClear();
 });
 
 afterEach(() => {
@@ -91,8 +107,41 @@ describe("permissão", () => {
       completed: 1,
       stillPending: 1,
       failed: 0,
+      // Segunda passada: cancelamento agendado detectado sem cortar acesso.
+      assinaturas: {
+        reviewed: 1,
+        canceled: 0,
+        reactivated: 0,
+        cancelScheduled: 1,
+        failed: 0,
+      },
     });
   });
+
+  it("OWNER dispara as DUAS passadas, com o companyId da sessão", async () => {
+    mockarSessao({ companyId: "company_1", role: "OWNER" });
+    const { reconciliarContratacoesAction } =
+      await import("@/app/dashboard/settings/billing/actions");
+
+    await reconciliarContratacoesAction();
+
+    // Sem a segunda, um cancelamento agendado nunca se efetivaria: não existe
+    // evento no instante em que a data chega.
+    expect(revisarAssinaturasDaEmpresa).toHaveBeenCalledWith("company_1");
+  });
+
+  it.each<Role>(["ADMIN", "VIEWER"])(
+    "%s não dispara a revisão de assinaturas",
+    async (role) => {
+      mockarSessao({ companyId: "company_1", role });
+      const { reconciliarContratacoesAction } =
+        await import("@/app/dashboard/settings/billing/actions");
+
+      await reconciliarContratacoesAction();
+
+      expect(revisarAssinaturasDaEmpresa).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("escopo de tenant", () => {

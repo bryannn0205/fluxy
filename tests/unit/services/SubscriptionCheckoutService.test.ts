@@ -123,6 +123,11 @@ function empresas(company = EMPRESA): CompanyRepository {
     update: async () => company,
     incrementOrderNumber: async () => 1,
     findPlanByCompany: async () => PLANO,
+    // Ciclo de vida pós-pagamento não é assunto deste arquivo: ele cobre a
+    // contratação. Ver SubscriptionLifecycleService.test.ts.
+    findByValidapaySubscriptionId: async () => null,
+    transitionSubscriptionStatus: async () => false,
+    listForLifecycleReview: async () => [],
   };
 }
 

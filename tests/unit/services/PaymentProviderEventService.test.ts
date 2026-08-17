@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  Company,
   PaymentProviderEvent,
   ProviderEventStatus,
   SubscriptionCheckout,
 } from "@/lib/generated/prisma/client";
 import type { ValidaPaySubscriptionsGateway } from "@/lib/validapay/subscriptions";
+import type { CompanyRepository } from "@/repositories/interfaces/CompanyRepository";
 import type {
   PaymentProviderEventRepository,
   RecordEventInput,
@@ -13,6 +15,10 @@ import type {
 import type { SubscriptionCheckoutRepository } from "@/repositories/interfaces/SubscriptionCheckoutRepository";
 import { PaymentProviderEventService } from "@/services/PaymentProviderEventService";
 import type { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
+import type {
+  ResultadoDeCicloDeVida,
+  SubscriptionLifecycleService,
+} from "@/services/SubscriptionLifecycleService";
 
 const CHECKOUT: SubscriptionCheckout = {
   id: "chk_1",
@@ -128,8 +134,40 @@ function assinaturasFalsas(
     getSubscription: vi.fn(async (id: string) => ({
       subscriptionId: id,
       status: "ACTIVE",
+      cancelamentoAgendado: false,
+      cancelamentoEfetivoEm: null,
+      cancelamentoImediato: false,
+      cicloAtualPago: true,
       metadata,
     })),
+  };
+}
+
+/**
+ * Ciclo de vida dublê.
+ *
+ * Por omissão devolve `NAO_CORRELACIONADA`, que é o estado de uma empresa que
+ * ainda não tem assinatura ativa — assim os testes de checkout inicial seguem
+ * caindo no caminho da tentativa local, que é o comportamento que eles fixam.
+ */
+function cicloDeVidaFalso(resultado: ResultadoDeCicloDeVida = "NAO_CORRELACIONADA") {
+  return {
+    revisarEmpresa: vi.fn(async () => resultado),
+    revisarPorAssinatura: vi.fn(async () => resultado),
+    registrarFalhaDeCiclo: vi.fn(async () => resultado),
+  } as unknown as SubscriptionLifecycleService & {
+    revisarPorAssinatura: ReturnType<typeof vi.fn>;
+    registrarFalhaDeCiclo: ReturnType<typeof vi.fn>;
+  };
+}
+
+function empresasFalsas(company: Company | null = null) {
+  return {
+    findByValidapaySubscriptionId: vi.fn(async () => company),
+    transitionSubscriptionStatus: vi.fn(async () => true),
+    listForLifecycleReview: vi.fn(async () => []),
+  } as unknown as CompanyRepository & {
+    findByValidapaySubscriptionId: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -153,6 +191,8 @@ describe("evento novo", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -174,6 +214,8 @@ describe("evento novo", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -198,6 +240,8 @@ describe("evento novo", () => {
       checkouts,
       checkoutServiceFalso(),
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
     const espiao = vi.spyOn(eventos.repo, "record");
 
@@ -222,6 +266,8 @@ describe("evento desconhecido", () => {
       checkoutsFalsos(),
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -239,6 +285,8 @@ describe("evento desconhecido", () => {
       checkoutsFalsos(),
       checkoutServiceFalso(),
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(corpo({ chargeId: "cha_1" }));
@@ -265,6 +313,8 @@ describe("duplicatas por payloadHash", () => {
       checkoutsFalsos(),
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar({ rawBody, payload });
@@ -311,6 +361,8 @@ describe("correlação", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     await service.processar(corpo({ event: "payment.success", chargeId: "cha_1" }));
@@ -328,6 +380,8 @@ describe("correlação", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     await service.processar(
@@ -350,6 +404,8 @@ describe("correlação", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -376,6 +432,8 @@ describe("correlação", () => {
       checkouts,
       checkoutService,
       assinaturas,
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     await service.processar(
@@ -394,6 +452,8 @@ describe("correlação", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -411,6 +471,8 @@ describe("correlação", () => {
       checkouts,
       checkoutServiceFalso(),
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
     const espiao = vi.spyOn(eventos.repo, "attachCompany");
 
@@ -431,6 +493,8 @@ describe("falhas transitórias", () => {
       checkouts,
       checkoutService,
       assinaturasFalsas(),
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(
@@ -455,6 +519,8 @@ describe("falhas transitórias", () => {
       checkouts,
       checkoutServiceFalso(),
       assinaturas,
+      cicloDeVidaFalso(),
+      empresasFalsas(),
     );
 
     const resultado = await service.processar(

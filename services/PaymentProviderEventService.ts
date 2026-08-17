@@ -3,9 +3,11 @@ import { createHash } from "node:crypto";
 import type { ProviderEventStatus } from "@/lib/generated/prisma/client";
 import { logger } from "@/lib/logger";
 import type { ValidaPaySubscriptionsGateway } from "@/lib/validapay/subscriptions";
+import type { CompanyRepository } from "@/repositories/interfaces/CompanyRepository";
 import type { PaymentProviderEventRepository } from "@/repositories/interfaces/PaymentProviderEventRepository";
 import type { SubscriptionCheckoutRepository } from "@/repositories/interfaces/SubscriptionCheckoutRepository";
 import type { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
+import type { SubscriptionLifecycleService } from "@/services/SubscriptionLifecycleService";
 
 /**
  * Eventos que disparam confirmação de pagamento.
@@ -19,6 +21,21 @@ const EVENTOS_DE_CONFIRMACAO = new Set([
   "payment.success",
   "subscription.activated",
   "charge.created",
+]);
+
+/**
+ * Eventos do ciclo de vida de uma assinatura JÁ ativa.
+ *
+ * `subscription.renewed` saiu da lista de confirmação: aquele caminho exige uma
+ * tentativa `PENDING`, e depois do primeiro pagamento a tentativa está
+ * `COMPLETED` — a renovação caía num no-op silencioso. A ativação inicial
+ * continua com três gatilhos e a reconciliação como rede.
+ *
+ * `subscription.canceled` entra aqui, e não numa lista de falha: cancelar não é
+ * falhar, e a ValidaPay cancela ao FIM do período pago.
+ */
+const EVENTOS_DE_CICLO_DE_VIDA = new Set([
+  "subscription.canceled",
   "subscription.renewed",
 ]);
 
@@ -29,10 +46,10 @@ const EVENTOS_DE_CONFIRMACAO = new Set([
  * na mesma direção: quem decide continua sendo `GET /v1/charges/:id`. Um
  * `payment.failed` sobre uma cobrança que a API reporta paga não encerra nada.
  *
- * A lista sai dos eventos documentados pela ValidaPay. `subscription.canceled`
- * fica DE FORA de propósito: cancelar assinatura mexeria no plano da empresa, e
- * a API não documenta o vocabulário de status de assinatura que serviria de
- * prova. Sem prova, o evento é registrado e nada é alterado.
+ * Cobre os dois casos de `payment.failed`, que são distintos: falha no checkout
+ * inicial encerra a tentativa local; falha de um ciclo de assinatura já ativa
+ * não tem tentativa `PENDING` e leva a empresa a `PAST_DUE`. A discriminação
+ * está em `registrarFalha`.
  */
 const EVENTOS_DE_FALHA = new Set(["payment.failed"]);
 
@@ -66,6 +83,8 @@ export class PaymentProviderEventService {
     private readonly checkouts: SubscriptionCheckoutRepository,
     private readonly checkoutService: SubscriptionCheckoutService,
     private readonly subscriptions: ValidaPaySubscriptionsGateway,
+    private readonly lifecycle: SubscriptionLifecycleService,
+    private readonly companies: CompanyRepository,
   ) {}
 
   async processar({
@@ -116,8 +135,70 @@ export class PaymentProviderEventService {
       return this.registrarFalha(eventId, eventType, payload);
     }
 
+    if (EVENTOS_DE_CICLO_DE_VIDA.has(eventType)) {
+      return this.revisarCicloDeVida(eventId, eventType, payload);
+    }
+
     await this.events.markStatus(eventId, "IGNORED");
     return { eventId, status: "IGNORED", ativou: false };
+  }
+
+  /**
+   * Renovação e cancelamento de assinatura já ativa.
+   *
+   * Correlaciona pelo `subscriptionId` do corpo contra
+   * `Company.validapaySubscriptionId` — coluna escrita pelo servidor na
+   * ativação. O evento diz QUAL assinatura olhar; quem decide é
+   * `GET /v1/subscriptions/:id`.
+   */
+  private async revisarCicloDeVida(
+    eventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): Promise<ProcessarEventoResult> {
+    const subscriptionId = texto(payload.subscriptionId);
+
+    if (!subscriptionId) {
+      // Sem identificador não há o que consultar, e o mesmo corpo não traria.
+      await this.events.markStatus(eventId, "FAILED");
+      return { eventId, status: "FAILED", ativou: false };
+    }
+
+    try {
+      const resultado = await this.lifecycle.revisarPorAssinatura(subscriptionId);
+
+      if (resultado === "NAO_CORRELACIONADA") {
+        logger.warn("Evento de assinatura sem empresa correspondente", {
+          resource: "payment_provider_event",
+          resourceId: eventId,
+          eventType,
+        });
+        await this.events.markStatus(eventId, "FAILED");
+        return { eventId, status: "FAILED", ativou: false };
+      }
+
+      await this.eventoDaEmpresaDaAssinatura(eventId, subscriptionId);
+      await this.events.markStatus(eventId, "PROCESSED");
+      return { eventId, status: "PROCESSED", ativou: false };
+    } catch (erro) {
+      logger.warn("Falha transitória ao revisar ciclo de vida da assinatura", {
+        resource: "payment_provider_event",
+        resourceId: eventId,
+        eventType,
+        erro: erro instanceof Error ? erro.name : "desconhecido",
+      });
+      await this.events.markStatus(eventId, "PENDING");
+      return { eventId, status: "PENDING", ativou: false };
+    }
+  }
+
+  /** Vincula o evento à empresa, para auditoria. Nunca vem do payload. */
+  private async eventoDaEmpresaDaAssinatura(
+    eventId: string,
+    subscriptionId: string,
+  ): Promise<void> {
+    const company = await this.companies.findByValidapaySubscriptionId(subscriptionId);
+    if (company) await this.events.attachCompany(eventId, company.id);
   }
 
   /**
@@ -164,6 +245,36 @@ export class PaymentProviderEventService {
     eventType: string,
     payload: Record<string, unknown>,
   ): Promise<ProcessarEventoResult> {
+    const subscriptionId = texto(payload.subscriptionId);
+
+    // Falha de CICLO tem precedência quando a assinatura já é de uma empresa
+    // conhecida. A discriminação é exata: no checkout inicial a empresa ainda
+    // não tem `validapaySubscriptionId`, então a correlação falha e o fluxo cai
+    // no caminho da tentativa local, que é o certo para aquele caso.
+    if (subscriptionId) {
+      try {
+        const resultado = await this.lifecycle.registrarFalhaDeCiclo(
+          subscriptionId,
+          texto(payload.chargeId),
+        );
+
+        if (resultado !== "NAO_CORRELACIONADA") {
+          await this.eventoDaEmpresaDaAssinatura(eventId, subscriptionId);
+          await this.events.markStatus(eventId, "PROCESSED");
+          return { eventId, status: "PROCESSED", ativou: false };
+        }
+      } catch (erro) {
+        logger.warn("Falha transitória ao registrar inadimplência", {
+          resource: "payment_provider_event",
+          resourceId: eventId,
+          eventType,
+          erro: erro instanceof Error ? erro.name : "desconhecido",
+        });
+        await this.events.markStatus(eventId, "PENDING");
+        return { eventId, status: "PENDING", ativou: false };
+      }
+    }
+
     return this.aplicar(eventId, eventType, payload, (checkoutId) =>
       this.checkoutService.encerrarSeNaoPago(checkoutId),
     );

@@ -32,6 +32,7 @@ import { PlanCatalogService } from "@/services/PlanCatalogService";
 import { SubscriptionCheckoutService } from "@/services/SubscriptionCheckoutService";
 import { PaymentProviderEventService } from "@/services/PaymentProviderEventService";
 import { SubscriptionReconciliationService } from "@/services/SubscriptionReconciliationService";
+import { SubscriptionLifecycleService } from "@/services/SubscriptionLifecycleService";
 
 // companyRepository e userRepository são exportados diretamente (não só via
 // Service) porque updates de perfil/empresa são CRUD puro, sem regra de
@@ -127,6 +128,14 @@ export const subscriptionCheckoutService = new SubscriptionCheckoutService(
   validaPayCharges,
 );
 
+// Depois do primeiro pagamento: renovar, falhar, cancelar. Não há tentativa
+// local a que se pendurar, e a correlação é Company.validapaySubscriptionId.
+export const subscriptionLifecycleService = new SubscriptionLifecycleService(
+  companyRepository,
+  validaPaySubscriptions,
+  validaPayCharges,
+);
+
 // Terceiro caminho até a MESMA confirmação, ao lado de webhook e polling:
 // recuperação operacional para tentativas que ficaram sem desfecho.
 export const subscriptionReconciliationService = new SubscriptionReconciliationService(
@@ -140,6 +149,8 @@ export const paymentProviderEventService = new PaymentProviderEventService(
   subscriptionCheckoutRepository,
   subscriptionCheckoutService,
   validaPaySubscriptions,
+  subscriptionLifecycleService,
+  companyRepository,
 );
 
 export const teamService = new TeamService(

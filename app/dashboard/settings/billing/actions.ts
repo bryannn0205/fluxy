@@ -7,9 +7,11 @@ import { requireCompany } from "@/lib/session";
 import { iniciarCheckoutSchema } from "@/schemas/subscription-checkout.schema";
 import {
   subscriptionCheckoutService,
+  subscriptionLifecycleService,
   subscriptionReconciliationService,
 } from "@/services";
 import type { CheckoutResumo } from "@/services/SubscriptionCheckoutService";
+import type { RevisaoDeAssinaturasResumo } from "@/services/SubscriptionLifecycleService";
 import type { ReconcileSummary } from "@/services/SubscriptionReconciliationService";
 import type { ActionResult } from "@/types/common";
 
@@ -120,14 +122,26 @@ export async function recuperarCheckoutAction(
  * próprio tenant.
  */
 export async function reconciliarContratacoesAction(): Promise<
-  ActionResult<ReconcileSummary>
+  ActionResult<ReconcileSummary & { assinaturas: RevisaoDeAssinaturasResumo }>
 > {
   const { companyId, role } = await requireCompany();
 
   return handleAction(async () => {
     assertPermission(role, "subscription", "manage");
 
-    // Delega inteiramente: nem consulta cobrança, nem ativa nada aqui.
-    return subscriptionReconciliationService.reconcilePending({ companyId });
+    // Duas passadas, dois serviços, nenhuma regra aqui.
+    //
+    // A primeira recupera contratações sem desfecho; a segunda revisa
+    // assinaturas já ativas contra a ValidaPay — é ela que efetiva um
+    // cancelamento agendado, porque nenhum webhook avisa quando a data chega.
+    // Sequenciais de propósito: as duas consultam o mesmo gateway, e paralelizar
+    // só dobraria a pressão sobre ele.
+    const contratacoes = await subscriptionReconciliationService.reconcilePending({
+      companyId,
+    });
+    const assinaturas =
+      await subscriptionLifecycleService.revisarAssinaturasDaEmpresa(companyId);
+
+    return { ...contratacoes, assinaturas };
   });
 }
