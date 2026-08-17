@@ -67,17 +67,27 @@ export function PlansPricing({ plans }: PlansPricingProps) {
           // Com três planos as duas deixaram de ser a mesma coisa, e prometer
           // teste onde ele não existe é o erro que mais custa no suporte.
           const temTrial = planHasTrial(plano.slug);
+          // Só o plano com teste grátis tem caminho público hoje.
+          //
+          // Contratar um plano pago exige conta: o checkout vive em
+          // /dashboard/settings/billing e precisa de `companyId`. Não existe
+          // rota de contratação antes do cadastro, então mandar Plus ou Pro
+          // para /register entregaria Standard com trial — o fallback
+          // silencioso que esta condição elimina.
+          const podeComecarAgora = temTrial;
           // Revalidado aqui pela mesma função que a próxima fronteira usará —
           // um slug que não sobrevive a ela não vira botão.
           const intencao = parsePlanIntent({ plan: plano.slug, billing: cobranca });
 
           return (
             <li key={plano.slug} className="relative flex">
-              {/* Selo do recomendado. Texto, e não só borda colorida: o
-                  destaque precisa existir para quem não distingue o roxo. */}
+              {/* "Recomendado", e não "Mais escolhido": não existe dado de
+                  adesão de clientes no produto, e afirmar popularidade sem
+                  medi-la é estatística inventada. Texto além da borda
+                  colorida, para o destaque não depender só do roxo. */}
               {ehRecomendado && (
                 <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-primary/40 bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground">
-                  Mais escolhido
+                  Recomendado
                 </span>
               )}
 
@@ -111,7 +121,7 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                     <PlanFeatures plan={plano} headingLevel="h3" />
                   </div>
 
-                  {intencao && (
+                  {podeComecarAgora && intencao ? (
                     <Link
                       href={buildRegisterUrl(intencao)}
                       className={cn(
@@ -124,6 +134,29 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                     >
                       Começar com o {plano.name}
                     </Link>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Controle desabilitado, e não um link disfarçado: o
+                          botão anterior dizia "Começar com o Fluxy Pro" e
+                          levava ao cadastro, que provisiona Standard. Um
+                          controle que não faz o que promete é pior que um
+                          controle que se declara indisponível. */}
+                      <button
+                        type="button"
+                        disabled
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "lg" }),
+                          "w-full cursor-not-allowed opacity-60",
+                        )}
+                      >
+                        Em breve
+                      </button>
+                      <p className="text-center text-xs text-muted-foreground">
+                        {plano.availableForCheckout
+                          ? "A contratação será liberada em breve."
+                          : "Contratação ainda não disponível para este plano."}
+                      </p>
+                    </div>
                   )}
                 </CardContent>
               </Card>

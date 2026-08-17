@@ -41,6 +41,7 @@ const STANDARD: PublicPlan = {
   maxOrdersPerMonth: 500,
   maxProducts: 500,
   maxCustomers: 2000,
+  availableForCheckout: true,
 };
 
 const PRO: PublicPlan = {
@@ -53,6 +54,7 @@ const PRO: PublicPlan = {
   maxOrdersPerMonth: 3000,
   maxProducts: 3000,
   maxCustomers: 10_000,
+  availableForCheckout: true,
 };
 
 const PLANOS = [STANDARD, PRO];
@@ -155,9 +157,11 @@ describe("alternador mensal/anual", () => {
 });
 
 describe("URLs de seleção", () => {
+  // Só o Standard tem caminho público: é o único com teste grátis. O Pro
+  // passou a exibir estado de indisponibilidade em vez de um botão que levava
+  // ao cadastro e entregava Standard.
   const casos = [
     ["Fluxy Standard", "monthly", "/register?plan=standard&billing=monthly"],
-    ["Fluxy Pro", "monthly", "/register?plan=pro&billing=monthly"],
   ] as const;
 
   for (const [nome, , esperado] of casos) {
@@ -170,7 +174,7 @@ describe("URLs de seleção", () => {
     });
   }
 
-  it("anual muda o billing dos dois links", async () => {
+  it("anual muda o billing do link do Standard", async () => {
     const usuario = userEvent.setup();
     render(<PlansPricing plans={PLANOS} />);
 
@@ -179,9 +183,10 @@ describe("URLs de seleção", () => {
     expect(
       screen.getByRole("link", { name: /começar com o fluxy standard/i }),
     ).toHaveAttribute("href", "/register?plan=standard&billing=yearly");
+    // O Pro não tem link em periodicidade nenhuma.
     expect(
-      screen.getByRole("link", { name: /começar com o fluxy pro/i }),
-    ).toHaveAttribute("href", "/register?plan=pro&billing=yearly");
+      screen.queryByRole("link", { name: /começar com o fluxy pro/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("nenhuma URL carrega planId, preço ou status", async () => {

@@ -46,6 +46,7 @@ const PLANOS: PublicPlan[] = [
     maxOrdersPerMonth: 500,
     maxProducts: 500,
     maxCustomers: 2000,
+    availableForCheckout: true,
   },
   {
     slug: "pro",
@@ -57,6 +58,7 @@ const PLANOS: PublicPlan[] = [
     maxOrdersPerMonth: 3000,
     maxProducts: 3000,
     maxCustomers: 10_000,
+    availableForCheckout: true,
   },
 ];
 
@@ -205,15 +207,18 @@ describe("PlansSection", () => {
     expect(
       screen.getByRole("link", { name: /começar com o fluxy standard/i }),
     ).toHaveAttribute("href", "/register?plan=standard&billing=monthly");
+    // A landing segue a mesma regra de /plans: plano sem teste grátis não
+    // oferece caminho de cadastro, senão as duas telas se contradiriam.
     expect(
-      screen.getByRole("link", { name: /começar com o fluxy pro/i }),
-    ).toHaveAttribute("href", "/register?plan=pro&billing=monthly");
+      screen.queryByRole("link", { name: /começar com o fluxy pro/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Em breve" })).toBeDisabled();
   });
 
-  it("o link do Pro não carrega status, preço nem planId", () => {
+  it("o link do Standard não carrega status, preço nem planId", () => {
     render(<PlansSection plans={PLANOS} />);
     const href = screen
-      .getByRole("link", { name: /começar com o fluxy pro/i })
+      .getByRole("link", { name: /começar com o fluxy standard/i })
       .getAttribute("href")!;
     const parametros = new URLSearchParams(href.split("?")[1]);
 

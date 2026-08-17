@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DEFAULT_PLAN_SLUG,
+  planHasTrial,
   PUBLIC_PLAN_NAMES,
   RECOMMENDED_PLAN_SLUG,
   ROUTES,
@@ -114,7 +115,11 @@ export function PlansSection({ plans }: PlansSectionProps) {
                       ))}
                     </ul>
 
-                    {intencao && (
+                    {/* Mesma regra da página de planos. Antes a landing
+                        mandava Plus e Pro ao cadastro enquanto /plans os
+                        bloqueava — dois lugares dizendo coisas diferentes
+                        sobre o mesmo plano. */}
+                    {planHasTrial(plano.slug) && intencao ? (
                       <Link
                         href={buildRegisterUrl(intencao)}
                         className={cn(
@@ -128,6 +133,17 @@ export function PlansSection({ plans }: PlansSectionProps) {
                       >
                         Começar com o {plano.name}
                       </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "lg" }),
+                          "w-full cursor-not-allowed border-border bg-card/40 opacity-60",
+                        )}
+                      >
+                        Em breve
+                      </button>
                     )}
                   </div>
                 </Reveal>

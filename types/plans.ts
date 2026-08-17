@@ -46,6 +46,19 @@ export interface PublicPlan {
   maxOrdersPerMonth: number | null;
   maxProducts: number | null;
   maxCustomers: number | null;
+  /**
+   * O plano tem preço configurado no provedor de pagamento?
+   *
+   * **Booleano derivado, não os identificadores.** A pergunta que a vitrine
+   * precisa responder é "dá para contratar?", e para isso basta saber se
+   * existe preço — o `priceId` em si continua fora do DTO público, junto com
+   * `id`, `createdAt` e `updatedAt`.
+   *
+   * `false` significa que nem o checkout interno funciona: `exigirPrecoRemoto`
+   * recusa a cobrança sem preço remoto. É o caso do Plus até que produto e
+   * preço próprios sejam criados no provedor.
+   */
+  availableForCheckout: boolean;
 }
 
 /** Casas decimais de dinheiro em pt-BR. */
@@ -131,5 +144,10 @@ export function toPublicPlan(plan: Plan): PublicPlan {
     maxOrdersPerMonth: plan.maxOrdersPerMonth,
     maxProducts: plan.maxProducts,
     maxCustomers: plan.maxCustomers,
+    // As duas periodicidades precisam existir: a vitrine alterna entre elas, e
+    // um plano contratável só na mensal ofereceria um botão que falha na
+    // metade das escolhas.
+    availableForCheckout:
+      plan.validapayPriceMonthlyId !== null && plan.validapayPriceYearlyId !== null,
   };
 }

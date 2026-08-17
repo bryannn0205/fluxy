@@ -12,6 +12,7 @@ const CHAVES_PUBLICAS = [
   "maxUsers",
   "maxOrdersPerMonth",
   "maxProducts",
+  "availableForCheckout",
   "maxCustomers",
 ] as const;
 

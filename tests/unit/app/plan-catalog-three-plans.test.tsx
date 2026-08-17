@@ -37,6 +37,8 @@ const CATALOGO: PublicPlan[] = PLANS.map((plano) => ({
   maxOrdersPerMonth: plano.maxOrdersPerMonth,
   maxProducts: plano.maxProducts,
   maxCustomers: plano.maxCustomers,
+  // Espelha o banco: só o Plus ainda não tem preço no provedor.
+  availableForCheckout: plano.slug !== "plus",
 }));
 
 function planoDoCatalogo(slug: string) {
@@ -164,19 +166,26 @@ describe("vitrine dos três planos", () => {
   it("destaca um único plano como recomendado, e é o Plus", () => {
     render(<PlansPricing plans={CATALOGO} />);
 
-    const selos = screen.getAllByText("Mais escolhido");
+    // "Recomendado", e não "Mais escolhido": o produto não mede adesão de
+    // clientes, e afirmar popularidade sem dado é estatística inventada.
+    const selos = screen.getAllByText("Recomendado");
     expect(selos).toHaveLength(1);
     expect(RECOMMENDED_PLAN_SLUG).toBe("plus");
     expect(cartao("Fluxy Plus")).toContainElement(selos[0]!);
+    expect(screen.queryByText("Mais escolhido")).toBeNull();
   });
 
-  it("cada cartão leva ao cadastro com o próprio slug", () => {
+  it("só o Standard leva ao cadastro; Plus e Pro não têm link", () => {
     render(<PlansPricing plans={CATALOGO} />);
 
-    for (const [slug, nome] of Object.entries(PUBLIC_PLAN_NAMES)) {
+    expect(
+      screen.getByRole("link", { name: /começar com o fluxy standard/i }),
+    ).toHaveAttribute("href", "/register?plan=standard&billing=monthly");
+
+    for (const nome of ["Fluxy Plus", "Fluxy Pro"]) {
       expect(
-        screen.getByRole("link", { name: new RegExp(`começar com o ${nome}`, "i") }),
-      ).toHaveAttribute("href", `/register?plan=${slug}&billing=monthly`);
+        screen.queryByRole("link", { name: new RegExp(`começar com o ${nome}`, "i") }),
+      ).toBeNull();
     }
   });
 
@@ -197,6 +206,61 @@ describe("vitrine dos três planos", () => {
     expect(within(cartao("Fluxy Standard")).getByText("R$ 290")).toBeVisible();
     expect(within(cartao("Fluxy Plus")).getByText("R$ 490")).toBeVisible();
     expect(within(cartao("Fluxy Pro")).getByText("R$ 890")).toBeVisible();
+  });
+});
+
+describe("planos pagos não caem em trial Standard", () => {
+  it("Plus e Pro exibem indisponibilidade em vez de botão de cadastro", () => {
+    render(<PlansPricing plans={CATALOGO} />);
+
+    for (const nome of ["Fluxy Plus", "Fluxy Pro"]) {
+      const botao = within(cartao(nome)).getByRole("button", { name: "Em breve" });
+      expect(botao).toBeDisabled();
+    }
+  });
+
+  it("nenhum link da vitrine aponta para cadastro com plano pago", () => {
+    const { container } = render(<PlansPricing plans={CATALOGO} />);
+
+    // A prova direta do defeito relatado: antes existiam
+    // `/register?plan=plus` e `/register?plan=pro`, e ambos terminavam em
+    // Standard com 14 dias.
+    for (const link of container.querySelectorAll("a[href*='/register']")) {
+      const href = link.getAttribute("href")!;
+      expect(href).toContain(`plan=${DEFAULT_PLAN_SLUG}`);
+      expect(href).not.toContain("plan=plus");
+      expect(href).not.toContain("plan=pro");
+    }
+  });
+
+  it("alternar para Anual não abre caminho de cadastro para Plus nem Pro", async () => {
+    const usuario = userEvent.setup();
+    const { container } = render(<PlansPricing plans={CATALOGO} />);
+
+    await usuario.click(screen.getByRole("radio", { name: "Anual" }));
+
+    for (const link of container.querySelectorAll("a[href*='/register']")) {
+      const href = link.getAttribute("href")!;
+      expect(href).not.toContain("plan=plus");
+      expect(href).not.toContain("plan=pro");
+    }
+    expect(screen.getAllByRole("button", { name: "Em breve" })).toHaveLength(2);
+  });
+
+  it("o plano só é contratável quando tem preço no provedor", () => {
+    // O Plus nasceu sem preço na ValidaPay; o `false` aqui é o mesmo dado que
+    // faz `exigirPrecoRemoto` recusar a cobrança no servidor.
+    const porSlug = new Map(CATALOGO.map((plano) => [plano.slug, plano]));
+    expect(porSlug.get("plus")!.availableForCheckout).toBe(false);
+    expect(porSlug.get("standard")!.availableForCheckout).toBe(true);
+    expect(porSlug.get("pro")!.availableForCheckout).toBe(true);
+  });
+
+  it("o DTO público não carrega os identificadores de preço", () => {
+    for (const plano of CATALOGO) {
+      expect(Object.keys(plano)).not.toContain("validapayPriceMonthlyId");
+      expect(Object.keys(plano)).not.toContain("validapayPriceYearlyId");
+    }
   });
 });
 

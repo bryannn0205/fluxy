@@ -85,6 +85,7 @@ describe.skipIf(!prisma)("catálogo público de planos", () => {
     for (const plano of catalogo) {
       expect(Object.keys(plano).sort()).toEqual(
         [
+          "availableForCheckout",
           "maxCustomers",
           "maxOrdersPerMonth",
           "maxProducts",

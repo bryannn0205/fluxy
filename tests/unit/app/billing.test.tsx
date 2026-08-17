@@ -50,6 +50,7 @@ const STANDARD: PublicPlan = {
   maxOrdersPerMonth: 500,
   maxProducts: 500,
   maxCustomers: 2000,
+  availableForCheckout: true,
 };
 
 const PRO: PublicPlan = {
@@ -62,6 +63,7 @@ const PRO: PublicPlan = {
   maxOrdersPerMonth: 3000,
   maxProducts: 3000,
   maxCustomers: 10_000,
+  availableForCheckout: true,
 };
 
 const PLANOS = [STANDARD, PRO];
