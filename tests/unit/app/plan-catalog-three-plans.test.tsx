@@ -210,13 +210,20 @@ describe("vitrine dos três planos", () => {
 });
 
 describe("planos pagos não caem em trial Standard", () => {
-  it("Plus e Pro exibem indisponibilidade em vez de botão de cadastro", () => {
+  it("Plus sem preço remoto fica indisponível; Pro com preço vira contratação", () => {
     render(<PlansPricing plans={CATALOGO} />);
 
-    for (const nome of ["Fluxy Plus", "Fluxy Pro"]) {
-      const botao = within(cartao(nome)).getByRole("button", { name: "Em breve" });
-      expect(botao).toBeDisabled();
-    }
+    // O Plus ainda não tem os dois preços no provedor — sem eles não há como
+    // cobrar, e um botão que prometesse cobrar mentiria.
+    expect(
+      within(cartao("Fluxy Plus")).getByRole("button", { name: "Em breve" }),
+    ).toBeDisabled();
+
+    // O Pro tem os dois: o botão contrata de verdade e leva ao ponto de entrada
+    // público, que decide entre login e checkout — nunca ao cadastro.
+    expect(
+      within(cartao("Fluxy Pro")).getByRole("link", { name: /assinar fluxy pro/i }),
+    ).toHaveAttribute("href", "/contratar?plan=pro&billing=monthly");
   });
 
   it("nenhum link da vitrine aponta para cadastro com plano pago", () => {
@@ -244,7 +251,13 @@ describe("planos pagos não caem em trial Standard", () => {
       expect(href).not.toContain("plan=plus");
       expect(href).not.toContain("plan=pro");
     }
-    expect(screen.getAllByRole("button", { name: "Em breve" })).toHaveLength(2);
+
+    // Só o Plus segue indisponível. O Pro carrega a periodicidade escolhida
+    // adiante, sem passar pelo cadastro.
+    expect(screen.getAllByRole("button", { name: "Em breve" })).toHaveLength(1);
+    expect(
+      within(cartao("Fluxy Pro")).getByRole("link", { name: /assinar fluxy pro/i }),
+    ).toHaveAttribute("href", "/contratar?plan=pro&billing=yearly");
   });
 
   it("o plano só é contratável quando tem preço no provedor", () => {

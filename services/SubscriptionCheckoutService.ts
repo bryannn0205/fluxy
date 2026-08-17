@@ -305,6 +305,45 @@ export class SubscriptionCheckoutService {
   }
 
   /**
+   * Encerra a tentativa quando a cobrança não se concretizou.
+   *
+   * **A consulta decide, não o evento.** Um `payment.failed` que se refira a
+   * uma cobrança que a API reporta `PAID` é contradição — e quem vence é a
+   * fonte autoritativa, então nesse caso a tentativa é ATIVADA em vez de
+   * encerrada. Fechar como falha ali descartaria um pagamento real por causa
+   * de um corpo de webhook fora de ordem.
+   *
+   * **Nunca toca na empresa no caminho de falha.** Uma tentativa frustrada
+   * encerra a si mesma; não rebaixa plano, não mexe em assinatura e não
+   * cancela nada. Rebaixar exigiria uma prova de cancelamento que este evento
+   * não é.
+   *
+   * @returns `true` se esta execução ativou — isto é, se a cobrança estava paga
+   */
+  async encerrarSeNaoPago(subscriptionCheckoutId: string): Promise<boolean> {
+    const checkout = await this.repository.findById(subscriptionCheckoutId);
+    if (!checkout || checkout.status !== "PENDING" || !checkout.externalChargeId) {
+      return false;
+    }
+
+    const cobranca = await this.charges.getCharge(checkout.externalChargeId);
+
+    if (cobranca.paid) {
+      return this.aplicarConfirmacao(checkout, cobranca);
+    }
+
+    await this.repository.markFailed(checkout.id);
+
+    logger.info("Tentativa de contratação encerrada sem pagamento", {
+      companyId: checkout.companyId,
+      resource: "subscription_checkout",
+      resourceId: checkout.id,
+    });
+
+    return false;
+  }
+
+  /**
    * Decide e ativa a partir de um snapshot JÁ obtido.
    *
    * Separado de `confirmarSeChargePago` para que a tela consulte a cobrança

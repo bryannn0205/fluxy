@@ -406,7 +406,9 @@ describe("a página é pública e não escreve nada", () => {
   it("as URLs saem dos helpers da E3, não de concatenação", () => {
     const fonte = codigo(CAMINHO_PRECOS);
 
-    expect(fonte).toContain("buildRegisterUrl");
+    // O CTA de cada plano é decidido em lib/plan-cta.ts, que monta a URL pelos
+    // helpers — a tela não escolhe rota por conta própria.
+    expect(fonte).toContain("resolverCtaDoPlano");
     expect(fonte).toContain("buildLoginUrl");
     // Nada de montar query à mão.
     expect(fonte).not.toContain("?plan=");

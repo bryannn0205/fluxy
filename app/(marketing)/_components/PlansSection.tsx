@@ -4,14 +4,13 @@ import { Check } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DEFAULT_PLAN_SLUG,
-  planHasTrial,
   PUBLIC_PLAN_NAMES,
   RECOMMENDED_PLAN_SLUG,
   ROUTES,
   TRIAL_DURATION_DAYS,
 } from "@/lib/constants";
 import { formatPriceFromDecimalString } from "@/lib/formatters";
-import { buildRegisterUrl, parsePlanIntent } from "@/lib/plan-intent";
+import { resolverCtaDoPlano } from "@/lib/plan-cta";
 import { cn } from "@/lib/utils";
 import { describePublicPlanLimits, type PublicPlan } from "@/types/plans";
 import { Reveal } from "@/app/(marketing)/_components/Reveal";
@@ -66,13 +65,11 @@ export function PlansSection({ plans }: PlansSectionProps) {
           <ul className="mx-auto mt-14 grid max-w-6xl items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
             {plans.map((plano, indice) => {
               const ehRecomendado = plano.slug === RECOMMENDED_PLAN_SLUG;
-              // Passa pelo parser da E3 em vez de montar o objeto à mão: é a
-              // mesma validação que a próxima fronteira vai aplicar, então um
-              // slug que não sobrevive aqui não vira link.
-              const intencao = parsePlanIntent({
-                plan: plano.slug,
-                billing: "monthly",
-              });
+              // A landing mostra só o preço mensal, então a intenção daqui é
+              // sempre mensal. A regra do botão é a mesma de /plans, resolvida
+              // no mesmo lugar — antes a landing mandava Plus e Pro ao cadastro
+              // enquanto /plans os bloqueava.
+              const cta = resolverCtaDoPlano({ plano, cobranca: "monthly" });
 
               return (
                 <Reveal as="li" key={plano.slug} delay={indice * 80}>
@@ -115,13 +112,20 @@ export function PlansSection({ plans }: PlansSectionProps) {
                       ))}
                     </ul>
 
-                    {/* Mesma regra da página de planos. Antes a landing
-                        mandava Plus e Pro ao cadastro enquanto /plans os
-                        bloqueava — dois lugares dizendo coisas diferentes
-                        sobre o mesmo plano. */}
-                    {planHasTrial(plano.slug) && intencao ? (
+                    {cta.tipo === "indisponivel" ? (
+                      <button
+                        type="button"
+                        disabled
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "lg" }),
+                          "w-full cursor-not-allowed border-border bg-card/40 opacity-60",
+                        )}
+                      >
+                        {cta.rotulo}
+                      </button>
+                    ) : (
                       <Link
-                        href={buildRegisterUrl(intencao)}
+                        href={cta.href}
                         className={cn(
                           buttonVariants({
                             variant: ehRecomendado ? "default" : "outline",
@@ -131,19 +135,8 @@ export function PlansSection({ plans }: PlansSectionProps) {
                           !ehRecomendado && "border-border bg-card/60 hover:bg-card",
                         )}
                       >
-                        Começar com o {plano.name}
+                        {cta.rotulo}
                       </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        className={cn(
-                          buttonVariants({ variant: "outline", size: "lg" }),
-                          "w-full cursor-not-allowed border-border bg-card/40 opacity-60",
-                        )}
-                      >
-                        Em breve
-                      </button>
                     )}
                   </div>
                 </Reveal>

@@ -22,6 +22,20 @@ const EVENTOS_DE_CONFIRMACAO = new Set([
   "subscription.renewed",
 ]);
 
+/**
+ * Eventos que indicam que a cobrança não vai se concretizar.
+ *
+ * **Também são gatilhos, não provas** — pela mesma razão dos de confirmação, e
+ * na mesma direção: quem decide continua sendo `GET /v1/charges/:id`. Um
+ * `payment.failed` sobre uma cobrança que a API reporta paga não encerra nada.
+ *
+ * A lista sai dos eventos documentados pela ValidaPay. `subscription.canceled`
+ * fica DE FORA de propósito: cancelar assinatura mexeria no plano da empresa, e
+ * a API não documenta o vocabulário de status de assinatura que serviria de
+ * prova. Sem prova, o evento é registrado e nada é alterado.
+ */
+const EVENTOS_DE_FALHA = new Set(["payment.failed"]);
+
 /** Chave de metadata que o Fluxy escreve ao criar a cobrança. */
 const CHAVE_DE_CORRELACAO = "subscriptionCheckoutId";
 
@@ -78,14 +92,32 @@ export class PaymentProviderEventService {
       return this.resolverDuplicata(event.id, event.status, eventType, payload);
     }
 
-    if (!EVENTOS_DE_CONFIRMACAO.has(eventType)) {
-      // Tipo desconhecido ou fora do fluxo de pagamento: registrado para que
-      // se saiba que chegou, sem inventar comportamento para ele.
-      await this.events.markStatus(event.id, "IGNORED");
-      return { eventId: event.id, status: "IGNORED", ativou: false };
+    return this.despachar(event.id, eventType, payload);
+  }
+
+  /**
+   * Encaminha pelo TIPO do evento.
+   *
+   * Um tipo que não esteja em nenhuma das duas listas vira `IGNORED`:
+   * registrado para que se saiba que chegou, sem inventar comportamento para
+   * ele. É o caso de `subscription.created`, `subscription.trial` e
+   * `subscription.canceled`.
+   */
+  private async despachar(
+    eventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): Promise<ProcessarEventoResult> {
+    if (EVENTOS_DE_CONFIRMACAO.has(eventType)) {
+      return this.confirmar(eventId, eventType, payload);
     }
 
-    return this.confirmar(event.id, eventType, payload);
+    if (EVENTOS_DE_FALHA.has(eventType)) {
+      return this.registrarFalha(eventId, eventType, payload);
+    }
+
+    await this.events.markStatus(eventId, "IGNORED");
+    return { eventId, status: "IGNORED", ativou: false };
   }
 
   /**
@@ -102,8 +134,8 @@ export class PaymentProviderEventService {
     eventType: string,
     payload: Record<string, unknown>,
   ): Promise<ProcessarEventoResult> {
-    if (status === "PENDING" && EVENTOS_DE_CONFIRMACAO.has(eventType)) {
-      return this.confirmar(eventId, eventType, payload);
+    if (status === "PENDING") {
+      return this.despachar(eventId, eventType, payload);
     }
 
     return { eventId, status, ativou: false };
@@ -113,6 +145,44 @@ export class PaymentProviderEventService {
     eventId: string,
     eventType: string,
     payload: Record<string, unknown>,
+  ): Promise<ProcessarEventoResult> {
+    return this.aplicar(eventId, eventType, payload, (checkoutId) =>
+      // O ÚNICO caminho de ativação. Consulta GET /v1/charges/:id e só segue
+      // com PAID — o status do payload não participa da decisão.
+      this.checkoutService.confirmarSeChargePago(checkoutId),
+    );
+  }
+
+  /**
+   * Encerra a tentativa correlacionada, sem encostar na empresa.
+   *
+   * A decisão final continua sendo da consulta: se a cobrança estiver paga, o
+   * service ativa em vez de encerrar. Um evento de falha nunca rebaixa plano.
+   */
+  private async registrarFalha(
+    eventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): Promise<ProcessarEventoResult> {
+    return this.aplicar(eventId, eventType, payload, (checkoutId) =>
+      this.checkoutService.encerrarSeNaoPago(checkoutId),
+    );
+  }
+
+  /**
+   * Correlaciona e executa o efeito, com o mesmo tratamento de insucesso.
+   *
+   * Confirmação e falha compartilham tudo menos a última chamada: a mesma
+   * correlação, os mesmos dois modos de insucesso — API indisponível (fica
+   * `PENDING`, alguém tenta de novo) e correlação impossível (fica `FAILED`,
+   * porque o mesmo corpo não traria o que falta) — e o mesmo vínculo de
+   * empresa. Duplicar isso faria os dois caminhos divergirem em silêncio.
+   */
+  private async aplicar(
+    eventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+    efeito: (checkoutId: string) => Promise<boolean>,
   ): Promise<ProcessarEventoResult> {
     let checkoutId: string | null;
 
@@ -150,9 +220,7 @@ export class PaymentProviderEventService {
 
     let ativou: boolean;
     try {
-      // O ÚNICO caminho de ativação. Consulta GET /v1/charges/:id e só segue
-      // com PAID — o status do payload não participa da decisão.
-      ativou = await this.checkoutService.confirmarSeChargePago(checkoutId);
+      ativou = await efeito(checkoutId);
     } catch (erro) {
       logger.warn("Falha transitória ao confirmar cobrança de evento", {
         resource: "payment_provider_event",

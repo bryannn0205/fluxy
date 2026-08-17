@@ -149,23 +149,69 @@ export function buildLoginUrl(intent: PlanIntent | null): string {
 }
 
 /**
+ * `/contratar?plan=plus&billing=monthly` — o botão de contratação da vitrine.
+ *
+ * **A mesma URL para todo mundo.** Quem decide se o visitante vai ao login ou
+ * direto ao checkout é o servidor, em `app/contratar/route.ts`. Foi de
+ * propósito: a alternativa era a landing e `/plans` lerem a sessão para
+ * escolher o destino, e aí duas páginas públicas passariam a depender de
+ * autenticação para renderizar um link. Há teste afirmando que elas não
+ * importam sessão.
+ */
+export function buildSubscribeUrl(intent: PlanIntent): string {
+  return comIntencao(ROUTES.SUBSCRIBE, intent);
+}
+
+/**
+ * A periodicidade como a tela de contratação a nomeia.
+ *
+ * `BillingInterval` do banco é `MONTHLY`/`YEARLY`; a intenção pública é
+ * `monthly`/`yearly`. São vocabulários de camadas diferentes e a tradução vive
+ * aqui, num lugar só — espalhá-la faria uma das pontas divergir no dia em que
+ * uma terceira periodicidade existisse.
+ */
+function intervaloDaTela(billing: BillingInterval): "MONTHLY" | "YEARLY" {
+  return billing === "yearly" ? "YEARLY" : "MONTHLY";
+}
+
+/**
+ * `/dashboard/settings/billing/checkout?plan=plus&interval=MONTHLY`.
+ *
+ * **Destino interno e fechado**, como os demais deste módulo: a base é uma
+ * constante de `ROUTES` e os dois parâmetros saem de uma intenção já validada.
+ *
+ * Levar para cá não contrata nada. A tela é um Server Component que revalida o
+ * slug, resolve o preço no banco e recusa o que não tiver preço remoto — o
+ * link é navegação, e a decisão continua sendo do servidor.
+ */
+export function buildCheckoutUrl(intent: PlanIntent): string {
+  const parametros = new URLSearchParams({
+    plan: intent.plan,
+    interval: intervaloDaTela(intent.billing),
+  });
+
+  return `${ROUTES.BILLING_CHECKOUT}?${parametros.toString()}`;
+}
+
+/**
  * Para onde ir depois de autenticar. **Conjunto fechado: sempre o painel.**
  *
  * Nenhum destino vem do navegador — não há `callbackUrl` nem `next` aqui, e é
  * por isso que redirect aberto não é possível neste caminho.
  *
- * A intenção só sobrevive quando é Pro, e **só como aviso**: o painel lê,
- * revalida e usa para dizer que a cobrança ainda será disponibilizada. Não
- * concede nada — quem decide plano é o banco, e o cadastro grava Standard
- * qualquer que tenha sido a escolha. Standard e "sem intenção" chegam ao
- * painel com a URL limpa, porque não há o que avisar: é o que já acontece.
+ * Standard e "sem intenção" vão para o painel limpo: o cadastro grava Standard
+ * com teste, e não há o que contratar. Um plano pago leva à tela de
+ * contratação, que é o destino próprio que este módulo esperava existir.
  *
- * Some quando a ValidaPay existir e o checkout tiver destino próprio.
+ * **A intenção continua não concedendo nada.** Ela escolhe uma tela; quem
+ * decide plano é o pagamento confirmado. Chegar ao checkout de Plus não torna
+ * a empresa Plus — a empresa segue no que o banco disser até `GET
+ * /v1/charges/:id` responder `PAID`.
  */
 export function buildPostAuthUrl(intent: PlanIntent | null): string {
   if (intent === null || intent.plan === DEFAULT_PLAN_SLUG) {
     return ROUTES.DASHBOARD;
   }
 
-  return comIntencao(ROUTES.DASHBOARD, intent);
+  return buildCheckoutUrl(intent);
 }

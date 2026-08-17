@@ -113,6 +113,10 @@ export const ROUTES = {
   SETTINGS: "/dashboard/settings",
   TEAM: "/dashboard/settings/team",
   BILLING: "/dashboard/settings/billing",
+  BILLING_CHECKOUT: "/dashboard/settings/billing/checkout",
+  // Ponto de entrada público da contratação. Decide no servidor se o visitante
+  // precisa autenticar antes de chegar ao checkout — ver app/contratar/route.ts.
+  SUBSCRIBE: "/contratar",
   ACCEPT_INVITE: "/accept-invite",
 } as const;
 

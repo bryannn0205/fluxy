@@ -207,12 +207,16 @@ describe("PlansSection", () => {
     expect(
       screen.getByRole("link", { name: /começar com o fluxy standard/i }),
     ).toHaveAttribute("href", "/register?plan=standard&billing=monthly");
-    // A landing segue a mesma regra de /plans: plano sem teste grátis não
-    // oferece caminho de cadastro, senão as duas telas se contradiriam.
+    // A landing segue a mesma regra de /plans, resolvida no mesmo lugar: plano
+    // sem teste grátis nunca oferece cadastro. Com preço no provedor, oferece
+    // contratação; sem preço, fica indisponível.
     expect(
       screen.queryByRole("link", { name: /começar com o fluxy pro/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Em breve" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: /assinar fluxy pro/i })).toHaveAttribute(
+      "href",
+      "/contratar?plan=pro&billing=monthly",
+    );
   });
 
   it("o link do Standard não carrega status, preço nem planId", () => {

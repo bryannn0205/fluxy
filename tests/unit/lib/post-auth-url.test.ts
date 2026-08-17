@@ -27,16 +27,26 @@ describe("destino após autenticação", () => {
     expect(destinoPara("plan=standard&billing=yearly")).toBe("/dashboard");
   });
 
-  it("Pro carrega a escolha para o aviso", () => {
+  it("plano pago vai à tela de contratação, com a periodicidade escolhida", () => {
+    // Antes o destino era `/dashboard?plan=pro`, onde um aviso dizia que a
+    // cobrança seria disponibilizada. Agora existe checkout, e o destino é
+    // ele — chegar lá não concede plano nenhum: a tela revalida sessão, papel,
+    // plano e preço, e só pagamento confirmado ativa.
     expect(destinoPara("plan=pro&billing=monthly")).toBe(
-      "/dashboard?plan=pro&billing=monthly",
+      "/dashboard/settings/billing/checkout?plan=pro&interval=MONTHLY",
     );
     expect(destinoPara("plan=pro&billing=yearly")).toBe(
-      "/dashboard?plan=pro&billing=yearly",
+      "/dashboard/settings/billing/checkout?plan=pro&interval=YEARLY",
+    );
+    expect(destinoPara("plan=plus&billing=monthly")).toBe(
+      "/dashboard/settings/billing/checkout?plan=plus&interval=MONTHLY",
+    );
+    expect(destinoPara("plan=plus&billing=yearly")).toBe(
+      "/dashboard/settings/billing/checkout?plan=plus&interval=YEARLY",
     );
   });
 
-  it("intenção inválida cai no painel limpo, nunca em Pro", () => {
+  it("intenção inválida cai no painel limpo, nunca em plano pago", () => {
     for (const query of [
       "plan=enterprise&billing=monthly",
       "plan=pro&billing=weekly",
@@ -68,13 +78,15 @@ describe("o destino é fechado no código", () => {
     }
   });
 
-  it("nenhum parâmetro além de plan e billing atravessa", () => {
+  it("nenhum parâmetro além de plan e interval atravessa", () => {
     const destino = destinoPara(
       "plan=pro&billing=yearly&planId=abc&price=0.00&subscriptionStatus=ACTIVE&role=OWNER&companyId=xyz",
     );
     const parametros = new URLSearchParams(destino.split("?")[1]);
 
-    expect([...parametros.keys()].sort()).toEqual(["billing", "plan"]);
+    // `interval` no lugar de `billing`: a tela de contratação nomeia a
+    // periodicidade como o banco a nomeia. A tradução vive em plan-intent.
+    expect([...parametros.keys()].sort()).toEqual(["interval", "plan"]);
     for (const proibido of [
       "planId",
       "price",

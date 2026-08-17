@@ -14,7 +14,8 @@ import {
   TRIAL_DURATION_DAYS,
   type BillingInterval,
 } from "@/lib/constants";
-import { buildLoginUrl, buildRegisterUrl, parsePlanIntent } from "@/lib/plan-intent";
+import { resolverCtaDoPlano } from "@/lib/plan-cta";
+import { buildLoginUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { cn } from "@/lib/utils";
 import type { PublicPlan } from "@/types/plans";
 
@@ -67,17 +68,8 @@ export function PlansPricing({ plans }: PlansPricingProps) {
           // Com três planos as duas deixaram de ser a mesma coisa, e prometer
           // teste onde ele não existe é o erro que mais custa no suporte.
           const temTrial = planHasTrial(plano.slug);
-          // Só o plano com teste grátis tem caminho público hoje.
-          //
-          // Contratar um plano pago exige conta: o checkout vive em
-          // /dashboard/settings/billing e precisa de `companyId`. Não existe
-          // rota de contratação antes do cadastro, então mandar Plus ou Pro
-          // para /register entregaria Standard com trial — o fallback
-          // silencioso que esta condição elimina.
-          const podeComecarAgora = temTrial;
-          // Revalidado aqui pela mesma função que a próxima fronteira usará —
-          // um slug que não sobrevive a ela não vira botão.
-          const intencao = parsePlanIntent({ plan: plano.slug, billing: cobranca });
+          // Mesma regra da landing, resolvida no mesmo lugar. Ver lib/plan-cta.
+          const cta = resolverCtaDoPlano({ plano, cobranca });
 
           return (
             <li key={plano.slug} className="relative flex">
@@ -121,26 +113,12 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                     <PlanFeatures plan={plano} headingLevel="h3" />
                   </div>
 
-                  {podeComecarAgora && intencao ? (
-                    <Link
-                      href={buildRegisterUrl(intencao)}
-                      className={cn(
-                        buttonVariants({
-                          variant: ehRecomendado ? "default" : "outline",
-                          size: "lg",
-                        }),
-                        "w-full",
-                      )}
-                    >
-                      Começar com o {plano.name}
-                    </Link>
-                  ) : (
+                  {cta.tipo === "indisponivel" ? (
                     <div className="space-y-2">
-                      {/* Controle desabilitado, e não um link disfarçado: o
-                          botão anterior dizia "Começar com o Fluxy Pro" e
-                          levava ao cadastro, que provisiona Standard. Um
-                          controle que não faz o que promete é pior que um
-                          controle que se declara indisponível. */}
+                      {/* Controle desabilitado, e não um link disfarçado: um
+                          botão que diz "Começar" e leva a um cadastro que
+                          entrega outro plano é pior que um que se declara
+                          indisponível. */}
                       <button
                         type="button"
                         disabled
@@ -149,14 +127,25 @@ export function PlansPricing({ plans }: PlansPricingProps) {
                           "w-full cursor-not-allowed opacity-60",
                         )}
                       >
-                        Em breve
+                        {cta.rotulo}
                       </button>
                       <p className="text-center text-xs text-muted-foreground">
-                        {plano.availableForCheckout
-                          ? "A contratação será liberada em breve."
-                          : "Contratação ainda não disponível para este plano."}
+                        {cta.explicacao}
                       </p>
                     </div>
+                  ) : (
+                    <Link
+                      href={cta.href}
+                      className={cn(
+                        buttonVariants({
+                          variant: ehRecomendado ? "default" : "outline",
+                          size: "lg",
+                        }),
+                        "w-full",
+                      )}
+                    >
+                      {cta.rotulo}
+                    </Link>
                   )}
                 </CardContent>
               </Card>
