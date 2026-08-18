@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -25,6 +25,7 @@ import type { ClientKanbanOrder } from "@/types/orders";
 import { updateOrderStatusAction } from "@/app/dashboard/orders/actions";
 import { KanbanColumn } from "@/app/dashboard/production/_components/KanbanColumn";
 import { ProductionMetrics } from "@/app/dashboard/production/_components/ProductionMetrics";
+import { OrderDrawer } from "@/app/dashboard/production/_components/OrderDrawer";
 
 // Sem isso, o DndContext usa os textos padrão em inglês da biblioteca para
 // leitor de tela — inconsistente com o resto da interface em pt-BR e é a
@@ -70,6 +71,7 @@ export function KanbanBoard({
 }) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
+  const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
@@ -124,6 +126,32 @@ export function KanbanBoard({
     router.refresh();
   }
 
+  const abrirPedido = useCallback((orderId: string) => setPedidoAberto(orderId), []);
+
+  const fecharPedido = useCallback((aberto: boolean) => {
+    if (!aberto) setPedidoAberto(null);
+  }, []);
+
+  /**
+   * Avanço feito pelo painel: move o cartão no board sem recarregar.
+   *
+   * O board mantém o mesmo estado que alimenta colunas, contadores e
+   * indicadores, então atualizar aqui move os três de uma vez. A gravação em
+   * si já aconteceu no painel, pela mesma `updateOrderStatusAction` do
+   * arrasto — não há segundo caminho de mutação.
+   */
+  const aplicarAvanco = useCallback(
+    (orderId: string, novoStatus: OrderStatus) => {
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === orderId ? { ...item, status: novoStatus } : item,
+        ),
+      );
+      router.refresh();
+    },
+    [router],
+  );
+
   return (
     <DndContext
       // Sem um id fixo, o dnd-kit gera o id do texto de instrução (usado em
@@ -164,11 +192,21 @@ export function KanbanBoard({
                 key={status}
                 status={status}
                 orders={orders.filter((order) => order.status === status)}
+                onAbrirPedido={abrirPedido}
               />
             ))}
           </div>
         </div>
       </div>
+
+      {/* `readOnly` já reflete `production:updateStage`. O portão real continua
+          em OrderService.updateStatus — aqui só decide o que renderizar. */}
+      <OrderDrawer
+        orderId={pedidoAberto}
+        onOpenChange={fecharPedido}
+        podeAvancar={!readOnly}
+        onEtapaAvancada={aplicarAvanco}
+      />
     </DndContext>
   );
 }

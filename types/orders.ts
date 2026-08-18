@@ -1,4 +1,11 @@
-import type { Prisma } from "@/lib/generated/prisma/client";
+import type {
+  AuditAction,
+  OrderPaymentStatus,
+  OrderPriority,
+  OrderStatus,
+  PaymentMethod,
+  Prisma,
+} from "@/lib/generated/prisma/client";
 import type { OrderStats as OrderStatsData } from "@/repositories/interfaces/OrderRepository";
 
 export type OrderWithRelations = Prisma.OrderGetPayload<{
@@ -162,4 +169,130 @@ export function toClientKanbanOrder(
 ): ClientKanbanOrder {
   const { total, ...resto } = order;
   return { ...resto, total: canViewFinancials ? Number(total) : null };
+}
+
+/**
+ * Evento do histórico do pedido, no formato que a tela precisa.
+ *
+ * Deliberadamente mais estreito que `AuditLog`: a linha do banco carrega `ip`,
+ * `resource`, `resourceId` e `companyId`, que não têm serventia na tela e não
+ * devem viajar até o navegador — `ip` em especial. Aqui sobram apenas os
+ * campos que a linha do tempo realmente lê.
+ */
+export interface OrderActivity {
+  id: string;
+  action: AuditAction;
+  changes: unknown;
+  createdAt: Date;
+  user: { name: string } | null;
+}
+
+export interface ClientOrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  /** `null` = este papel não pode ver valores. Ver ClientOrderDetail.financials. */
+  unitPrice: number | null;
+  total: number | null;
+}
+
+export interface ClientOrderFinancials {
+  subtotal: number;
+  discount: number;
+  deliveryFee: number;
+  surcharge: number;
+  total: number;
+  paidAmount: number;
+  paymentStatus: OrderPaymentStatus;
+  paymentMethod: PaymentMethod | null;
+}
+
+/**
+ * Pedido completo já pronto para o navegador.
+ *
+ * Existe porque `OrderWithRelations` não atravessa a fronteira RSC: os campos
+ * monetários são `Decimal` do Prisma, que é instância de classe e o React
+ * recusa em props serializadas. A conversão para número acontece aqui, uma vez.
+ *
+ * `financials: null` significa "este papel não pode ver valores" — e então
+ * nenhum número existe no objeto, nem no bloco nem dentro dos itens. Não é o
+ * bloco escondido no JSX: ele não é montado.
+ */
+export interface ClientOrderDetail {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  priority: OrderPriority;
+  createdAt: Date;
+  expectedDeliveryDate: Date | null;
+  notes: string | null;
+  customer: {
+    name: string;
+    document: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+  };
+  /** Quem lançou o pedido no sistema — não é vendedor nem responsável. */
+  createdBy: { name: string } | null;
+  items: ClientOrderItem[];
+  financials: ClientOrderFinancials | null;
+  activities: OrderActivity[];
+}
+
+/**
+ * Converte o pedido do banco no objeto que o navegador recebe, decidindo uma
+ * única vez se os valores acompanham.
+ *
+ * Quando `canViewFinancials` é falso, os campos monetários não são zerados nem
+ * omitidos do tipo: eles simplesmente não são lidos do registro de origem, e o
+ * que sai daqui nunca os conteve.
+ */
+export function toClientOrderDetail(
+  order: OrderWithRelations,
+  canViewFinancials: boolean,
+): ClientOrderDetail {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    priority: order.priority,
+    createdAt: order.createdAt,
+    expectedDeliveryDate: order.expectedDeliveryDate,
+    notes: order.notes,
+    customer: {
+      name: order.customer.name,
+      document: order.customer.document,
+      phone: order.customer.phone,
+      email: order.customer.email,
+      address: order.customer.address,
+    },
+    createdBy: order.createdBy ? { name: order.createdBy.name } : null,
+    items: order.items.map((item) => ({
+      id: item.id,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: canViewFinancials ? Number(item.unitPrice) : null,
+      total: canViewFinancials ? Number(item.total) : null,
+    })),
+    financials: canViewFinancials
+      ? {
+          subtotal: Number(order.subtotal),
+          discount: Number(order.discount),
+          deliveryFee: Number(order.deliveryFee),
+          surcharge: Number(order.surcharge),
+          total: Number(order.total),
+          paidAmount: Number(order.paidAmount),
+          paymentStatus: order.paymentStatus,
+          paymentMethod: order.paymentMethod,
+        }
+      : null,
+    activities: order.auditLogs.map((log) => ({
+      id: log.id,
+      action: log.action,
+      changes: log.changes,
+      createdAt: log.createdAt,
+      user: log.user ? { name: log.user.name } : null,
+    })),
+  };
 }

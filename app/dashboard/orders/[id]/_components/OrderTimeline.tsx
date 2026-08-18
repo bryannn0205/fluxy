@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { formatDateTime } from "@/lib/formatters";
 import type { AuditAction } from "@/lib/generated/prisma/client";
-import type { OrderWithRelations } from "@/types/orders";
+import type { OrderActivity } from "@/types/orders";
 
 const ACTION_ICONS: Record<AuditAction, LucideIcon> = {
   CREATE: PackagePlus,
@@ -15,7 +15,11 @@ const ACTION_ICONS: Record<AuditAction, LucideIcon> = {
   PERMISSION_CHANGE: Circle,
 };
 
-type AuditLogEntry = OrderWithRelations["auditLogs"][number];
+// Tipo estrutural mínimo (ver OrderActivity): a página de detalhe passa a
+// linha do AuditLog, que o satisfaz, e o drawer de Produção passa uma versão
+// sem `ip` — o mesmo componente serve aos dois sem levar ao navegador um campo
+// que ele não usa.
+type AuditLogEntry = OrderActivity;
 
 // changes é Json? no schema — a forma { campo: { before, after } } é uma
 // convenção deste código (ver OrderService), não garantida pelo tipo. A

@@ -12,9 +12,10 @@ import { KanbanCard } from "@/app/dashboard/production/_components/KanbanCard";
 interface KanbanColumnProps {
   status: OrderStatus;
   orders: ClientKanbanOrder[];
+  onAbrirPedido: (orderId: string) => void;
 }
 
-export function KanbanColumn({ status, orders }: KanbanColumnProps) {
+export function KanbanColumn({ status, orders, onAbrirPedido }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const tituloId = `coluna-${status}`;
 
@@ -64,7 +65,9 @@ export function KanbanColumn({ status, orders }: KanbanColumnProps) {
             </p>
           </div>
         ) : (
-          orders.map((order) => <KanbanCard key={order.id} order={order} />)
+          orders.map((order) => (
+            <KanbanCard key={order.id} order={order} onAbrir={onAbrirPedido} />
+          ))
         )}
       </div>
     </section>

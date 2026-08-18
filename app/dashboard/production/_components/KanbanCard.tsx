@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { AlertTriangle, CalendarClock, Clock } from "lucide-react";
@@ -8,9 +8,13 @@ import { AlertTriangle, CalendarClock, Clock } from "lucide-react";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
 import { isOverdue as computeIsOverdue } from "@/lib/dates";
 import { formatCalendarDate, formatCurrency, formatOrderNumber } from "@/lib/formatters";
-import { ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { ClientKanbanOrder } from "@/types/orders";
+
+// Mesma distância que ativa o arrasto no PointerSensor do board. Abaixo dela o
+// gesto é clique; acima, é arrasto — e o clique que o navegador dispara ao
+// soltar precisa ser descartado, senão soltar um cartão abriria o painel.
+const DISTANCIA_DE_ARRASTO_PX = 8;
 
 /**
  * Hora de entrada do pedido.
@@ -34,20 +38,60 @@ function formatarEntrada(createdAt: Date): string {
     : formatCalendarDate(createdAt);
 }
 
-export function KanbanCard({ order }: { order: ClientKanbanOrder }) {
+export function KanbanCard({
+  order,
+  onAbrir,
+}: {
+  order: ClientKanbanOrder;
+  onAbrir: (orderId: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: order.id,
     data: { orderNumber: order.orderNumber },
   });
 
+  const origemDoPonteiro = useRef<{ x: number; y: number } | null>(null);
+
   const atrasado =
     order.status !== "COMPLETED" && computeIsOverdue(order.expectedDeliveryDate);
+
+  function registrarOrigem(event: React.PointerEvent) {
+    origemDoPonteiro.current = { x: event.clientX, y: event.clientY };
+  }
+
+  /**
+   * Abre o painel apenas quando o gesto foi mesmo um clique.
+   *
+   * Comparar a posição de onde o ponteiro desceu com a de onde subiu é
+   * deliberadamente independente do dnd-kit: `isDragging` já voltou a ser
+   * falso quando o `click` dispara, e depender da ordem interna dos eventos da
+   * biblioteca deixaria o comportamento refém de uma atualização dela.
+   */
+  function aoClicar(event: React.MouseEvent) {
+    const origem = origemDoPonteiro.current;
+    origemDoPonteiro.current = null;
+
+    if (origem) {
+      const percorrido = Math.hypot(event.clientX - origem.x, event.clientY - origem.y);
+      if (percorrido > DISTANCIA_DE_ARRASTO_PX) return;
+    }
+
+    onAbrir(order.id);
+  }
 
   return (
     <article
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      // O dnd-kit marca o cartão como `role="button"`, e sem nome próprio o
+      // leitor de tela o computa a partir do conteúdo — passando a anunciar o
+      // cartão com o rótulo do botão interno ("Ver detalhes do pedido..."),
+      // como se fossem o mesmo controle. Nomeando o cartão pelo que ele é, os
+      // dois passam a se distinguir: este arrasta, o de dentro abre.
+      aria-label={`Pedido ${formatOrderNumber(order.orderNumber)}, ${order.customer.name}`}
+      onPointerDownCapture={registrarOrigem}
+      onClick={aoClicar}
       style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
         "group/card relative cursor-grab touch-none rounded-xl border border-border bg-card/90 p-3.5",
@@ -63,13 +107,30 @@ export function KanbanCard({ order }: { order: ClientKanbanOrder }) {
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <Link
-          href={ROUTES.ORDER_DETAIL(order.id)}
+        {/* Botão próprio, e não só o clique no cartão: o KeyboardSensor usa
+            Espaço e Enter para arrastar, então quem navega por teclado não
+            teria como abrir o painel pelo cartão. Este controle recebe foco no
+            Tab e responde a Enter. O `stopPropagation` no pointerdown impede
+            que o gesto vire arrasto. */}
+        <button
+          type="button"
+          aria-label={`Ver detalhes do pedido ${formatOrderNumber(order.orderNumber)}`}
           onPointerDown={(event) => event.stopPropagation()}
-          className="font-mono text-sm font-semibold tabular-nums underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          // Sem isto o Enter nunca chega a acionar o botão: o evento sobe até
+          // o cartão, onde o KeyboardSensor o interpreta como início de
+          // arrasto e chama preventDefault, engolindo o clique que o navegador
+          // dispararia. Conter o keydown aqui devolve o Enter ao botão e
+          // preserva o arrasto por teclado no cartão, que continua recebendo
+          // Espaço e Enter quando o foco está nele.
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAbrir(order.id);
+          }}
+          className="rounded font-mono text-sm font-semibold tabular-nums underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           {formatOrderNumber(order.orderNumber)}
-        </Link>
+        </button>
         <PriorityBadge priority={order.priority} />
       </div>
 
