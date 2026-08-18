@@ -253,11 +253,24 @@ export const ORDER_PRIORITY_LABELS: Record<OrderPriority, string> = {
   URGENT: "Urgente",
 };
 
+/**
+ * Prioridade do pedido, na paleta escura do painel.
+ *
+ * Estes valores eram claros (`bg-slate-50`, `bg-sky-50`...) e vinham de antes
+ * do redesign do painel — sobre o fundo escuro da Produção eles apareciam como
+ * manchas quase brancas. Seguem agora a mesma fórmula de ORDER_STATUS_STYLES
+ * acima: matiz a 15% sobre o escuro, texto no tom 300, borda a 25%.
+ *
+ * A escala é proposital: LOW e NORMAL são neutros — prioridade comum é a
+ * maioria dos cards, e pintar todos vira ruído em vez de informação. A cor
+ * entra só quando há o que avisar, e HIGH cede a saturação para URGENT ser o
+ * único vermelho do board.
+ */
 export const ORDER_PRIORITY_STYLES: Record<OrderPriority, string> = {
-  LOW: "bg-slate-50 text-slate-600 border-slate-200",
-  NORMAL: "bg-sky-50 text-sky-700 border-sky-200",
-  HIGH: "bg-orange-50 text-orange-700 border-orange-200",
-  URGENT: "bg-red-50 text-red-700 border-red-200",
+  LOW: "bg-muted/30 text-muted-foreground/75 border-border/60",
+  NORMAL: "bg-muted/50 text-muted-foreground border-border/70",
+  HIGH: "bg-amber-400/12 text-amber-300 border-amber-400/25",
+  URGENT: "bg-red-400/15 text-red-300 border-red-400/35",
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

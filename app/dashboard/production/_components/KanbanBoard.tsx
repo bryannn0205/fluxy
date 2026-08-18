@@ -24,6 +24,7 @@ import type { OrderStatus } from "@/lib/generated/prisma/client";
 import type { ClientKanbanOrder } from "@/types/orders";
 import { updateOrderStatusAction } from "@/app/dashboard/orders/actions";
 import { KanbanColumn } from "@/app/dashboard/production/_components/KanbanColumn";
+import { ProductionMetrics } from "@/app/dashboard/production/_components/ProductionMetrics";
 
 // Sem isso, o DndContext usa os textos padrão em inglês da biblioteca para
 // leitor de tela — inconsistente com o resto da interface em pt-BR e é a
@@ -143,14 +144,30 @@ export function KanbanBoard({
         ? {}
         : { sensors, onDragEnd: (event: DragEndEvent) => void handleDragEnd(event) })}
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {KANBAN_COLUMNS.map((status) => (
-          <KanbanColumn
-            key={status}
-            status={status}
-            orders={orders.filter((order) => order.status === status)}
-          />
-        ))}
+      <div className="space-y-6">
+        {/* Dentro do board, e não na página: os indicadores leem o mesmo estado
+            que o arrasto otimista altera, então acompanham o cartão no instante
+            em que ele muda de coluna. Calculados no servidor, ficariam um
+            `router.refresh()` atrasados e exibiriam um número que não confere
+            com o que está à vista. */}
+        <ProductionMetrics orders={orders} />
+
+        {/* Abaixo de lg o board rola na horizontal em vez de empilhar quatro
+            colunas: empilhado, o operador perde a leitura de fluxo entre etapas,
+            que é a razão de existir do kanban. `-mx-*`/`px-*` deixam a rolagem
+            sangrar até a borda da tela sem cortar o cartão no início nem no fim.
+            `snap` faz cada coluna parar alinhada em vez de meia à mostra. */}
+        <div className="-mx-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:overflow-visible lg:px-0">
+          <div className="grid snap-x snap-mandatory auto-cols-[86%] grid-flow-col items-stretch gap-4 sm:auto-cols-[46%] lg:snap-none lg:auto-cols-auto lg:grid-flow-row lg:grid-cols-4">
+            {KANBAN_COLUMNS.map((status) => (
+              <KanbanColumn
+                key={status}
+                status={status}
+                orders={orders.filter((order) => order.status === status)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </DndContext>
   );
