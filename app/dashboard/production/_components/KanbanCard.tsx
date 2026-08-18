@@ -155,9 +155,14 @@ export function KanbanCard({
         </div>
 
         {/* Ausente para papéis sem `orders:viewFinancials` — o valor nem chega
-            ao componente nesse caso. Ver toClientKanbanOrder. */}
+            ao componente nesse caso. Ver toClientKanbanOrder.
+
+            `ml-auto` e não apenas o `justify-between` do contêiner: quando o
+            valor cai para a segunda linha, ele fica sozinho nela e o
+            `justify-between` passa a alinhá-lo à ESQUERDA — o valor mudava de
+            lado de um cartão para o outro. */}
         {order.total !== null && (
-          <span className="shrink-0 font-mono text-sm font-semibold whitespace-nowrap tabular-nums">
+          <span className="ml-auto shrink-0 font-mono text-sm font-semibold whitespace-nowrap tabular-nums">
             {formatCurrency(order.total)}
           </span>
         )}

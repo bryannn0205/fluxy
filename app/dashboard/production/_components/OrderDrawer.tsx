@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ExternalLink, EyeOff, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, ExternalLink, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -27,6 +27,7 @@ import {
   ROTULO_DE_AVANCO,
   proximaEtapa,
 } from "@/app/dashboard/production/_components/etapas";
+import { isOverdue } from "@/lib/dates";
 import {
   formatCalendarDate,
   formatCurrency,
@@ -40,14 +41,31 @@ import type { ClientOrderDetail } from "@/types/orders";
 import { getOrderDetailAction } from "@/app/dashboard/production/actions";
 import { updateOrderStatusAction } from "@/app/dashboard/orders/actions";
 
-function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Campo({
+  rotulo,
+  valor,
+  alerta,
+}: {
+  rotulo: string;
+  valor: string;
+  /** Aviso curto ao lado do valor, sempre com ícone — nunca só cor. */
+  alerta?: string | undefined;
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{rotulo}</dt>
       {/* Quebra em vez de truncar: um e-mail ou endereço cortado com
           reticências deixa de ser informação — e o painel tem altura de sobra
           para a linha crescer. */}
-      <dd className="mt-0.5 text-sm break-words">{valor}</dd>
+      <dd className="mt-0.5 text-sm break-words">
+        {valor}
+        {alerta && (
+          <span className="ml-2 inline-flex items-center gap-1 align-middle text-xs font-medium text-destructive">
+            <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+            {alerta}
+          </span>
+        )}
+      </dd>
     </div>
   );
 }
@@ -118,21 +136,37 @@ export function OrderDrawer({
     setPedido(null);
     setAba("detalhes");
 
-    void getOrderDetailAction(orderId).then((resultado) => {
-      // Descarta a resposta se o painel já foi fechado ou trocou de pedido —
-      // sem isso, uma consulta lenta sobrescreveria o pedido aberto depois.
-      if (cancelado) return;
-
-      if (resultado.error || !resultado.data) {
-        toast.error(resultado.error ?? "Não foi possível carregar o pedido");
-        onOpenChange(false);
-        setCarregando(false);
-        return;
-      }
-
-      setPedido(resultado.data);
+    function desistir(mensagem: string) {
+      toast.error(mensagem);
+      onOpenChange(false);
       setCarregando(false);
-    });
+    }
+
+    void getOrderDetailAction(orderId)
+      .then((resultado) => {
+        // Descarta a resposta se o painel já foi fechado ou trocou de pedido
+        // — sem isso, uma consulta lenta sobrescreveria o pedido aberto
+        // depois.
+        if (cancelado) return;
+
+        if (resultado.error || !resultado.data) {
+          desistir(resultado.error ?? "Não foi possível carregar o pedido");
+          return;
+        }
+
+        setPedido(resultado.data);
+        setCarregando(false);
+      })
+      .catch(() => {
+        // A Server Action pode nem chegar ao servidor: rede caída, aba que
+        // dormiu, deploy no meio do caminho. Aí a promessa REJEITA em vez de
+        // devolver `error`, e sem este ramo ela rejeitava sem tratamento — o
+        // painel ficava preso no esqueleto para sempre, anunciando
+        // "Carregando pedido" a quem usa leitor de tela e sem dizer nada a
+        // quem enxerga.
+        if (cancelado) return;
+        desistir("Não foi possível carregar o pedido. Verifique sua conexão.");
+      });
 
     return () => {
       cancelado = true;
@@ -281,9 +315,17 @@ export function OrderDrawer({
                         valor={formatDateTime(pedido.createdAt)}
                       />
                       {pedido.expectedDeliveryDate && (
+                        // O cartão marca o atraso e o painel não marcava:
+                        // quem abrisse o pedido via a data vencida sem nada
+                        // dizendo que venceu. Mesma regra do board —
+                        // entregue não está atrasado.
                         <Campo
                           rotulo="Previsão de entrega"
                           valor={formatCalendarDate(pedido.expectedDeliveryDate)}
+                          {...(pedido.status !== "COMPLETED" &&
+                          isOverdue(pedido.expectedDeliveryDate)
+                            ? { alerta: "Atrasado" }
+                            : {})}
                         />
                       )}
                       {/* `createdBy` é quem lançou o pedido no sistema. Não é
@@ -303,7 +345,11 @@ export function OrderDrawer({
                           className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
                         >
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
+                            {/* Quebra em vez de truncar, pela mesma razão do
+                                Campo: o nome do produto não se repete em
+                                lugar nenhum, e é ele que diz o que precisa
+                                ser produzido. */}
+                            <p className="text-sm font-medium break-words">
                               {item.productName}
                             </p>
                             <p className="text-xs text-muted-foreground tabular-nums">
