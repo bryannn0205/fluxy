@@ -89,6 +89,20 @@ export class PrismaSubscriptionCheckoutRepository implements SubscriptionCheckou
     return this.prisma.subscriptionCheckout.findUniqueOrThrow({ where: { id } });
   }
 
+  async attachSession(
+    id: string,
+    sessao: { sessionId: string; url: string },
+  ): Promise<SubscriptionCheckout> {
+    // Os DOIS campos no WHERE: a linha só recebe sessão se estiver inteiramente
+    // sem sessão. Assim não existe caminho que preencha um e deixe o outro.
+    await this.prisma.subscriptionCheckout.updateMany({
+      where: { id, externalSessionId: null, externalSessionUrl: null },
+      data: { externalSessionId: sessao.sessionId, externalSessionUrl: sessao.url },
+    });
+
+    return this.prisma.subscriptionCheckout.findUniqueOrThrow({ where: { id } });
+  }
+
   async markFailed(id: string): Promise<void> {
     await this.prisma.subscriptionCheckout.updateMany({
       where: { id, status: "PENDING" },

@@ -16,6 +16,7 @@ function checkout(id: string, overrides: Partial<SubscriptionCheckout> = {}) {
     billingInterval: "MONTHLY",
     provider: "VALIDAPAY",
     externalSessionId: null,
+    externalSessionUrl: null,
     externalChargeId: `cha_${id}`,
     status: "PENDING",
     createdAt: new Date("2026-08-10T18:00:00Z"),

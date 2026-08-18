@@ -85,6 +85,27 @@ export interface SubscriptionCheckoutRepository {
    */
   attachChargeId(id: string, chargeId: string): Promise<SubscriptionCheckout>;
 
+  /**
+   * Grava identificador E URL da sessão hospedada — **juntos, e só se ainda não
+   * houver sessão**.
+   *
+   * Um método só para os dois campos, e não dois métodos, porque eles descrevem
+   * a MESMA sessão externa: um estado em que o id apontasse para uma sessão e a
+   * URL para outra mandaria o cliente pagar uma coisa e correlacionaria outra.
+   *
+   * A escrita condicional é a única defesa contra sessão duplicada. Medido em
+   * sandbox: `POST /v1/checkout-sessions` **não tem idempotência** — repetir com
+   * o mesmo `externalId` cria outra sessão, não devolve `409`, e não há consulta
+   * por identificador externo. Se uma corrida criar duas sessões lá fora, a
+   * primeira que chegar ao banco é a oficial e a segunda nunca é apresentada.
+   *
+   * Devolve a linha como ficou — a sessão pode ser a de outra execução.
+   */
+  attachSession(
+    id: string,
+    sessao: { sessionId: string; url: string },
+  ): Promise<SubscriptionCheckout>;
+
   markFailed(id: string): Promise<void>;
 
   /**

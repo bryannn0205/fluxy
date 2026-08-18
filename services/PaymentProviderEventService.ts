@@ -230,7 +230,13 @@ export class PaymentProviderEventService {
     return this.aplicar(eventId, eventType, payload, (checkoutId) =>
       // O ÚNICO caminho de ativação. Consulta GET /v1/charges/:id e só segue
       // com PAID — o status do payload não participa da decisão.
-      this.checkoutService.confirmarSeChargePago(checkoutId),
+      //
+      // O `chargeId` do corpo é repassado porque no checkout hospedado a
+      // tentativa nasce SEM cobrança: quem abre a cobrança é a ValidaPay,
+      // dentro da página dela, e o evento é o primeiro momento em que o Fluxy
+      // fica sabendo qual é. Ele identifica o que consultar; a resposta da
+      // consulta é que decide.
+      this.checkoutService.confirmarSeChargePago(checkoutId, texto(payload.chargeId)),
     );
   }
 

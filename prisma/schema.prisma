@@ -809,6 +809,21 @@ model SubscriptionCheckout {
   /// porque a linha nasce ANTES da chamada externa — é justamente o registro
   /// que sobrevive caso a chamada falhe.
   externalSessionId String?
+
+  /// URL da página hospedada, como a ValidaPay a devolveu.
+  ///
+  /// Persistida porque **não há como obtê-la de novo**: `POST
+  /// /v1/checkout-sessions` devolve `url` uma única vez, e a consulta da sessão
+  /// não traz esse campo — medido em sandbox. Sem a coluna, o segundo clique
+  /// teria o identificador e nenhum endereço para onde mandar o cliente, e a
+  /// alternativa seria derivar a URL do id, isto é, depender de um formato que
+  /// a ValidaPay não documenta.
+  ///
+  /// Gravada junto de `externalSessionId`, na mesma escrita condicional: as
+  /// duas descrevem a MESMA sessão, e um estado em que apontassem para sessões
+  /// diferentes mandaria o cliente pagar uma coisa e correlacionaria outra.
+  externalSessionUrl String?
+
   externalChargeId  String?
 
   status SubscriptionCheckoutStatus @default(PENDING)

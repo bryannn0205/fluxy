@@ -62,7 +62,6 @@ function cobranca(overrides: Partial<ChargeSnapshot> = {}): ChargeSnapshot {
     subscriptionId: ID_ASSINATURA,
     paymentId: null,
     paidAt: null,
-    pix: null,
     ...overrides,
   };
 }
@@ -155,7 +154,6 @@ function assinaturas(snapshot: SubscriptionSnapshot = assinatura()) {
 
 function cobrancas(snapshot: ChargeSnapshot = cobranca()) {
   return {
-    createPixCharge: vi.fn(),
     getCharge: vi.fn(async () => snapshot),
   } as unknown as ValidaPayChargesGateway & { getCharge: ReturnType<typeof vi.fn> };
 }

@@ -228,7 +228,7 @@ describe("correlação e ativação", () => {
       corpoDe({ event: "payment.success", chargeId: checkout!.externalChargeId }),
     );
 
-    expect(confirmar).toHaveBeenCalledWith(checkoutId);
+    expect(confirmar).toHaveBeenCalledWith(checkoutId, checkout!.externalChargeId);
   });
 
   it("a empresa NÃO é ativada pelo payload", async () => {

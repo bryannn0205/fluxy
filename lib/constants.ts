@@ -114,6 +114,9 @@ export const ROUTES = {
   TEAM: "/dashboard/settings/team",
   BILLING: "/dashboard/settings/billing",
   BILLING_CHECKOUT: "/dashboard/settings/billing/checkout",
+  // Para onde a ValidaPay devolve o cliente depois do pagamento. A página lê o
+  // estado no servidor — a URL não prova nada. Ver app/.../checkout/retorno.
+  BILLING_CHECKOUT_RETURN: "/dashboard/settings/billing/checkout/retorno",
   // Ponto de entrada público da contratação. Decide no servidor se o visitante
   // precisa autenticar antes de chegar ao checkout — ver app/contratar/route.ts.
   SUBSCRIBE: "/contratar",

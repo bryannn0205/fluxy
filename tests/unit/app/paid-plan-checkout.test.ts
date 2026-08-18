@@ -12,7 +12,7 @@ import { DEFAULT_PLAN_SLUG, planHasTrial } from "@/lib/constants";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { resolverCtaDoPlano } from "@/lib/plan-cta";
 import type { ChargeSnapshot, ValidaPayChargesGateway } from "@/lib/validapay/charges";
-import type { CompanyRepository } from "@/repositories/interfaces/CompanyRepository";
+import type { ValidaPayCheckoutSessionsGateway } from "@/lib/validapay/checkout-sessions";
 import type { PlanRepository } from "@/repositories/interfaces/PlanRepository";
 import type {
   ActivateIfPendingInput,
@@ -103,6 +103,7 @@ function tentativa(overrides: Partial<SubscriptionCheckout> = {}): SubscriptionC
     billingInterval: "MONTHLY",
     provider: "VALIDAPAY",
     externalSessionId: null,
+    externalSessionUrl: null,
     externalChargeId: null,
     status: "PENDING",
     createdAt: new Date("2026-08-17T10:00:00Z"),
@@ -133,6 +134,20 @@ function repositorio(inicial: SubscriptionCheckout = tentativa()) {
     },
     async listPendingWithCharge() {
       return [];
+    },
+    async attachSession(id, sessao) {
+      if (
+        id === linha.id &&
+        linha.externalSessionId === null &&
+        linha.externalSessionUrl === null
+      ) {
+        linha = {
+          ...linha,
+          externalSessionId: sessao.sessionId,
+          externalSessionUrl: sessao.url,
+        };
+      }
+      return linha;
     },
     async attachChargeId(id, chargeId) {
       if (id === linha.id && linha.externalChargeId === null) {
@@ -168,23 +183,6 @@ function catalogo(...lista: Plan[]): PlanRepository {
   };
 }
 
-function empresas(): CompanyRepository {
-  return {
-    findById: async (id) => (id === EMPRESA.id ? EMPRESA : null),
-    findByEmail: async () => null,
-    createWithOwner: async () => EMPRESA,
-    update: async () => EMPRESA,
-    incrementOrderNumber: async () => 1,
-    findPlanByCompany: async () => PLUS,
-    // Ciclo de vida pós-pagamento não participa destes testes: eles cobrem a
-    // contratação. Ver paid-plan-lifecycle.test.ts.
-    findByValidapaySubscriptionId: async () => null,
-    transitionSubscriptionStatus: async () => false,
-    listForLifecycleReview: async () => [],
-    listForLifecycleReviewAcrossTenants: async () => [],
-  };
-}
-
 function cobranca(overrides: Partial<ChargeSnapshot> = {}): ChargeSnapshot {
   return {
     chargeId: "cha_1",
@@ -193,31 +191,37 @@ function cobranca(overrides: Partial<ChargeSnapshot> = {}): ChargeSnapshot {
     subscriptionId: null,
     paymentId: null,
     paidAt: null,
-    pix: null,
     ...overrides,
   };
 }
 
 function gateway(snapshot: ChargeSnapshot = cobranca()) {
+  /** Os priceId que chegaram à ValidaPay, na ordem. */
   const recebidos: string[] = [];
 
-  const gw: ValidaPayChargesGateway = {
-    createPixCharge: vi.fn(async (input) => {
+  const sessoes: ValidaPayCheckoutSessionsGateway = {
+    createSession: vi.fn(async (input) => {
       recebidos.push(input.priceId);
-      return { chargeId: "cha_1", customerId: null, duplicated: false, pix: null };
+      return {
+        sessionId: "cs_1",
+        url: "https://app.validapay.com.br/pagamento/cs_1",
+      };
     }),
-    getCharge: vi.fn(async () => snapshot),
-  };
+    getSession: vi.fn(),
+  } as unknown as ValidaPayCheckoutSessionsGateway;
 
-  return { gw, recebidos };
+  const gw: ValidaPayChargesGateway = { getCharge: vi.fn(async () => snapshot) };
+
+  return { gw, sessoes, recebidos };
 }
 
 function servico(
   ambiente: ReturnType<typeof repositorio>,
   planos: PlanRepository,
   charges: ValidaPayChargesGateway,
+  sessoes: ValidaPayCheckoutSessionsGateway = gateway().sessoes,
 ) {
-  return new SubscriptionCheckoutService(ambiente.repo, planos, empresas(), charges);
+  return new SubscriptionCheckoutService(ambiente.repo, planos, sessoes, charges);
 }
 
 let ambiente: ReturnType<typeof repositorio>;
@@ -244,9 +248,9 @@ describe("o preço cobrado é o do plano e da periodicidade pedidos", () => {
       const local = repositorio(
         tentativa({ intendedPlanId: caso.plano.id, billingInterval: caso.intervalo }),
       );
-      const { gw, recebidos } = gateway();
+      const { gw, sessoes, recebidos } = gateway();
 
-      await servico(local, catalogo(caso.plano), gw).iniciarCheckout(
+      await servico(local, catalogo(caso.plano), gw, sessoes).iniciarCheckout(
         { planId: caso.plano.id, billingInterval: caso.intervalo },
         EMPRESA,
       );
@@ -261,29 +265,29 @@ describe("o preço cobrado é o do plano e da periodicidade pedidos", () => {
   }
 
   it("plano sem preço remoto é recusado antes de qualquer chamada externa", async () => {
-    const { gw } = gateway();
+    const { gw, sessoes } = gateway();
 
     await expect(
-      servico(ambiente, catalogo(SEM_PRECO), gw).iniciarCheckout(
+      servico(ambiente, catalogo(SEM_PRECO), gw, sessoes).iniciarCheckout(
         { planId: SEM_PRECO.id, billingInterval: "MONTHLY" },
         EMPRESA,
       ),
     ).rejects.toBeInstanceOf(ValidationError);
 
-    expect(gw.createPixCharge).not.toHaveBeenCalled();
+    expect(sessoes.createSession).not.toHaveBeenCalled();
   });
 
   it("plano inexistente é recusado", async () => {
-    const { gw } = gateway();
+    const { gw, sessoes } = gateway();
 
     await expect(
-      servico(ambiente, catalogo(PLUS), gw).iniciarCheckout(
+      servico(ambiente, catalogo(PLUS), gw, sessoes).iniciarCheckout(
         { planId: "plan_que_nao_existe", billingInterval: "MONTHLY" },
         EMPRESA,
       ),
     ).rejects.toBeInstanceOf(ValidationError);
 
-    expect(gw.createPixCharge).not.toHaveBeenCalled();
+    expect(sessoes.createSession).not.toHaveBeenCalled();
   });
 });
 
@@ -368,8 +372,52 @@ describe("nada além de cobrança paga ativa plano", () => {
     );
 
     expect(fonte).toContain("if (!cobranca.paid) return false;");
-    // Nenhum atalho por parâmetro de URL ou página de retorno.
-    for (const proibido of ["searchParams", "success", "?paid", "returnUrl"]) {
+
+    // O que se proíbe é LER o retorno, não mencionar a palavra. O service monta
+    // `successUrl` para enviar à ValidaPay — isso é saída, e é legítimo. O que
+    // nunca pode existir é entrada vinda da URL de volta.
+    for (const proibido of [
+      "searchParams",
+      "req.url",
+      "request.url",
+      "?paid",
+      "paid=true",
+      "returnUrl",
+      "callbackUrl",
+    ]) {
+      expect(fonte).not.toContain(proibido);
+    }
+
+    // `successUrl` e `failureUrl` só aparecem como argumento da criação da
+    // sessão — nunca como condição.
+    expect(fonte).not.toMatch(/if\s*\([^)]*success/i);
+    expect(fonte).not.toMatch(/desfecho\s*===/);
+  });
+
+  it("a página de retorno consulta o servidor e ignora o desfecho da URL", () => {
+    const fonte = semComentarios(
+      join(
+        process.cwd(),
+        "app",
+        "dashboard",
+        "settings",
+        "billing",
+        "checkout",
+        "retorno",
+        "page.tsx",
+      ),
+    );
+
+    // Estado vem do service, escopado à empresa da sessão.
+    expect(fonte).toContain("consultarParaExibicao");
+    expect(fonte).toContain("requireCompany()");
+
+    // O `desfecho` da query NUNCA é lido: quem manda é o estado da tentativa.
+    expect(fonte).not.toMatch(/desfecho\s*===/);
+    expect(fonte).not.toMatch(/if\s*\([^)]*desfecho/);
+
+    // E a página não ativa nada por conta própria.
+    for (const proibido of ["activateIfPending", "subscriptionStatus", "planId"]) {
       expect(fonte).not.toContain(proibido);
     }
   });

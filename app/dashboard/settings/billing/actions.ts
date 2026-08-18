@@ -29,9 +29,11 @@ import type { ActionResult } from "@/types/common";
  */
 
 /**
- * Abre (ou reaproveita) a tentativa de contratação e garante a cobrança.
+ * Abre (ou reaproveita) a tentativa e devolve a URL do checkout hospedado.
  *
- * Não altera plano nem status da empresa: a tentativa nasce `PENDING`.
+ * Não altera plano nem status da empresa: a tentativa nasce `PENDING`. O
+ * pagamento acontece inteiramente na ValidaPay — nenhum dado de cartão ou Pix
+ * atravessa esta action.
  */
 export async function iniciarCheckoutAction(
   input: unknown,
@@ -46,61 +48,12 @@ export async function iniciarCheckoutAction(
       throw new ValidationError(validacao.error.flatten().fieldErrors);
     }
 
-    // O service recebe a empresa da sessão inteira; `planId` e periodicidade
-    // são o único que veio de fora, e ambos passaram pelo schema.
-    return subscriptionCheckoutService.iniciarCheckout(validacao.data, company);
-  });
-}
-
-/**
- * Estado atual da tentativa, para o polling da tela.
- *
- * A consulta a `GET /v1/charges/:id` acontece AQUI, no servidor — o navegador
- * nunca fala com a ValidaPay e nunca vê credencial. Se a cobrança estiver
- * paga, a ativação ocorre no mesmo caminho autoritativo usado por webhook e
- * reconciliação.
- */
-export async function verificarStatusCheckoutAction(
-  checkoutId: unknown,
-): Promise<ActionResult<CheckoutResumo>> {
-  const { companyId, role } = await requireCompany();
-
-  return handleAction(async () => {
-    assertPermission(role, "subscription", "view");
-
-    if (typeof checkoutId !== "string" || checkoutId.length === 0) {
-      throw new ValidationError({ checkoutId: ["Tentativa inválida"] });
-    }
-
-    return subscriptionCheckoutService.consultarParaExibicao(checkoutId, companyId);
-  });
-}
-
-/**
- * Recuperação após um `POST /v1/charges` que expirou no cliente.
- *
- * Reaproveita a MESMA tentativa e, por consequência, o mesmo `externalId`
- * determinístico — é isso que faz a ValidaPay devolver `409 DUPLICATE_CHARGE`
- * com o `chargeId` original em vez de abrir uma segunda cobrança. Nunca cria
- * `SubscriptionCheckout` novo.
- */
-export async function recuperarCheckoutAction(
-  checkoutId: unknown,
-): Promise<ActionResult<CheckoutResumo>> {
-  const { companyId, role } = await requireCompany();
-
-  return handleAction(async () => {
-    assertPermission(role, "subscription", "manage");
-
-    if (typeof checkoutId !== "string" || checkoutId.length === 0) {
-      throw new ValidationError({ checkoutId: ["Tentativa inválida"] });
-    }
-
-    // Escopo ANTES de qualquer chamada externa: um id de outra empresa não
-    // pode nem chegar a provocar uma requisição à ValidaPay.
-    await subscriptionCheckoutService.exigirTentativaDaEmpresa(checkoutId, companyId);
-
-    return subscriptionCheckoutService.garantirChargeCriado(checkoutId);
+    // `planId` e periodicidade são o único que veio de fora, e ambos passaram
+    // pelo schema. A empresa vem da sessão; o preço, do banco.
+    return subscriptionCheckoutService.iniciarCheckout(validacao.data, {
+      id: company.companyId,
+      role: company.role,
+    });
   });
 }
 
@@ -108,18 +61,11 @@ export async function recuperarCheckoutAction(
  * Reconciliação manual das contratações pendentes da própria empresa.
  *
  * Recuperação OPERACIONAL, não caminho normal: existe para o caso de uma
- * tentativa ficar `PENDING` porque o webhook não chegou e o usuário fechou a
- * aba antes de o polling confirmar.
+ * tentativa ficar `PENDING` porque o webhook não chegou.
  *
  * **Escopada à empresa da sessão.** O `companyId` vem de `requireCompany()` e
  * nunca da entrada — sem isso, quem chamasse acionaria trabalho sobre dados de
- * outros tenants. Não há papel de administração de plataforma neste produto;
- * os papéis são todos da empresa, e `subscription:manage` é o que responde por
- * contratação.
- *
- * Não recebe parâmetro algum de propósito: não há nada a escolher, e um
- * identificador de entrada seria mais uma superfície para apontar para fora do
- * próprio tenant.
+ * outros tenants. Não recebe parâmetro algum de propósito.
  */
 export async function reconciliarContratacoesAction(): Promise<
   ActionResult<ReconcileSummary & { assinaturas: RevisaoDeAssinaturasResumo }>

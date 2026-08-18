@@ -1,3 +1,6 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "@/lib/generated/prisma/client";
@@ -41,8 +44,19 @@ const TABELAS_QUE_DEVEM_FICAR_VAZIAS = DELETE_ORDER.filter((t) => t !== "Plan");
 
 /** Total de FKs do schema. Divergência denuncia deriva e aborta. */
 const FKS_ESPERADAS = 33;
-const MIGRATIONS_ESPERADAS = 9;
 const TABELAS_ESPERADAS = 19;
+
+/**
+ * Migrations aplicadas no banco de teste, contadas a partir do REPOSITÓRIO.
+ *
+ * Antes era um número escrito à mão, e ele quebrava a suíte inteira a cada
+ * migration nova — com uma mensagem que parecia deriva do banco quando na
+ * verdade era o repositório andando. O invariante que interessa é outro: o
+ * banco de teste está no mesmo ponto que as migrations versionadas.
+ */
+const MIGRATIONS_ESPERADAS = readdirSync(join(process.cwd(), "prisma", "migrations"), {
+  withFileTypes: true,
+}).filter((entrada) => entrada.isDirectory()).length;
 
 export interface TabelaComLinhas {
   tabela: string;

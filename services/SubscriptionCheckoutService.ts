@@ -1,21 +1,18 @@
 import type {
   BillingInterval,
-  Company,
   Plan,
   Role,
+  SubscriptionCheckout,
   SubscriptionCheckoutStatus,
 } from "@/lib/generated/prisma/client";
+import { ROUTES } from "@/lib/constants";
+import { env } from "@/lib/env";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { assertPermission } from "@/lib/permissions";
-import type {
-  ChargeCustomer,
-  ChargeSnapshot,
-  PixPaymentData,
-  ValidaPayChargesGateway,
-} from "@/lib/validapay/charges";
+import type { ChargeSnapshot, ValidaPayChargesGateway } from "@/lib/validapay/charges";
+import type { ValidaPayCheckoutSessionsGateway } from "@/lib/validapay/checkout-sessions";
 import { ValidaPayRequestError, ValidaPayTimeoutError } from "@/lib/validapay/errors";
-import type { CompanyRepository } from "@/repositories/interfaces/CompanyRepository";
 import type { PlanRepository } from "@/repositories/interfaces/PlanRepository";
 import type { SubscriptionCheckoutRepository } from "@/repositories/interfaces/SubscriptionCheckoutRepository";
 import type { IniciarCheckoutInput } from "@/schemas/subscription-checkout.schema";
@@ -23,23 +20,13 @@ import type { IniciarCheckoutInput } from "@/schemas/subscription-checkout.schem
 /**
  * Janela para reaproveitar uma tentativa `PENDING`.
  *
- * **Decisão de negócio**, não imposição da API: passados 30 minutos o QR de Pix
- * provavelmente já não serve, e continuar apontando para ele deixaria o cliente
- * diante de um código morto. Reduzir o valor cria tentativas órfãs; aumentá-lo
- * insiste numa cobrança velha.
+ * **Decisão de negócio**, não imposição da API. Trinta minutos é tempo de sobra
+ * para concluir um pagamento na página hospedada; passado isso, insistir na
+ * mesma sessão provavelmente apresentaria uma página vencida.
  */
 const JANELA_DE_REAPROVEITAMENTO_MS = 30 * 60 * 1000;
 
-/**
- * Prefixo do `externalId` enviado à ValidaPay.
- *
- * Derivado do id da tentativa, e **nunca de relógio ou aleatório**: é isso que
- * faz uma segunda tentativa da mesma contratação cair em `409 DUPLICATE_CHARGE`
- * — recuperando o `chargeId` original — em vez de abrir uma cobrança nova.
- */
-const PREFIXO_EXTERNAL_ID = "fluxy-checkout-";
-
-type CompanyComPapel = Company & { role: Role };
+type CompanyComPapel = { id: string; role: Role };
 
 export interface PlanoParaCheckout {
   planId: string;
@@ -51,36 +38,45 @@ export interface PlanoParaCheckout {
 
 export interface CheckoutResumo {
   checkoutId: string;
-  chargeId: string | null;
+  /**
+   * Página hospedada da ValidaPay, onde o cliente escolhe Pix ou cartão.
+   *
+   * `null` quando a tentativa já foi resolvida — não se manda ninguém pagar de
+   * novo o que já está pago — ou quando a sessão ficou irrecuperável.
+   */
+  url: string | null;
   status: SubscriptionCheckoutStatus;
-  /** Só para exibição. `null` quando ainda não há cobrança ou já foi paga. */
-  pix: PixPaymentData | null;
 }
 
 /**
- * Contratação de plano pela ValidaPay — criação da cobrança e ativação.
+ * Contratação de plano — abertura da sessão hospedada e ativação.
  *
- * **Só `GET /v1/charges/:id` com `status = PAID` ativa um plano.** Nem a
- * resposta da criação, nem o payload de um webhook: a criação devolve uma
- * cobrança pendente, e o simulador oficial responde `PROCESSING` antes de
- * processar. Webhook e reconciliação são gatilhos que convergem aqui.
+ * **O pagamento acontece inteiramente na ValidaPay.** O Fluxy cria a sessão com
+ * o `priceId` resolvido no servidor, manda o cliente para lá, e volta a ouvir só
+ * quando um evento chega. Nenhum dado de pagamento — número de cartão, CVV,
+ * chave Pix — entra neste processo.
+ *
+ * **Só uma consulta oficial ativa um plano.** `GET /v1/charges/:id` com
+ * `status = PAID`. Nem a resposta da criação da sessão, nem o retorno do
+ * cliente pela `successUrl`, nem o corpo de um webhook. Webhook e reconciliação
+ * são gatilhos que convergem aqui.
  */
 export class SubscriptionCheckoutService {
   constructor(
     private readonly repository: SubscriptionCheckoutRepository,
     private readonly planRepository: PlanRepository,
-    private readonly companyRepository: CompanyRepository,
+    private readonly sessions: ValidaPayCheckoutSessionsGateway,
     private readonly charges: ValidaPayChargesGateway,
   ) {}
 
   /**
-   * Abre (ou reaproveita) uma tentativa e garante a cobrança na ValidaPay.
+   * Abre (ou reaproveita) uma tentativa e garante a sessão de pagamento.
    *
    * **Não altera plano nem status da empresa.** A tentativa nasce `PENDING` e
-   * assim fica até um pagamento confirmado.
+   * assim fica até um pagamento confirmado na fonte oficial.
    *
    * @throws {ForbiddenError} papel sem `subscription:manage`
-   * @throws {ValidationError} plano inexistente, sem preço na ValidaPay, ou empresa sem CNPJ
+   * @throws {ValidationError} plano inexistente ou sem preço na ValidaPay
    */
   async iniciarCheckout(
     input: IniciarCheckoutInput,
@@ -93,11 +89,12 @@ export class SubscriptionCheckoutService {
       throw new ValidationError({ planId: ["Plano não encontrado"] });
     }
 
-    // Falha aqui, antes de criar a tentativa: sem preço remoto a cobrança não
+    // Falha aqui, antes de criar a tentativa: sem preço remoto a sessão não
     // teria como ser aberta, e a linha ficaria órfã por um erro de cadastro.
     this.exigirPrecoRemoto(plano, input.billingInterval);
-    exigirDocumento(company);
 
+    // Sob lock, com janela de reuso: dois cliques simultâneos convergem para a
+    // MESMA tentativa local, que é o que impede duas sessões externas.
     const { checkout } = await this.repository.findOrCreatePending({
       companyId: company.id,
       intendedPlanId: plano.id,
@@ -105,21 +102,17 @@ export class SubscriptionCheckoutService {
       reuseWindowMs: JANELA_DE_REAPROVEITAMENTO_MS,
     });
 
-    return this.garantirChargeCriado(checkout.id);
+    return this.garantirSessaoCriada(checkout.id);
   }
 
   /**
-   * Garante que a tentativa tenha `externalChargeId`, reusando o mesmo
-   * `externalId` determinístico.
+   * Garante que a tentativa tenha sessão hospedada, sem nunca criar a segunda.
    *
-   * Existe porque um timeout do cliente **não** significa que o servidor
-   * falhou: já foi medido em sandbox um `POST` que expirou aqui e foi
-   * processado lá. Rechamar com o mesmo `externalId` recupera o `chargeId`
-   * original pelo `409`; gerar um `externalId` novo cobraria duas vezes.
-   *
-   * @throws {ValidaPayTimeoutError} sem gravar nada — a tentativa segue `PENDING`
+   * A ordem importa: **reuso antes de criação**. Se a tentativa já tem sessão
+   * gravada, devolve aquela URL e não fala com a ValidaPay — é o que faz o
+   * clique duplo convergir.
    */
-  async garantirChargeCriado(subscriptionCheckoutId: string): Promise<CheckoutResumo> {
+  async garantirSessaoCriada(subscriptionCheckoutId: string): Promise<CheckoutResumo> {
     const checkout = await this.repository.findById(subscriptionCheckoutId);
     if (!checkout) {
       throw new ValidationError({
@@ -127,37 +120,39 @@ export class SubscriptionCheckoutService {
       });
     }
 
-    if (checkout.externalChargeId) {
-      return resumo(checkout.id, checkout.externalChargeId, checkout.status, null);
+    if (checkout.status !== "PENDING") {
+      return resumo(checkout.id, null, checkout.status);
     }
 
-    const [plano, company] = await Promise.all([
-      this.planRepository.findById(checkout.intendedPlanId),
-      this.carregarEmpresa(checkout.companyId),
-    ]);
+    const reaproveitada = this.reaproveitarSessao(checkout);
+    if (reaproveitada !== undefined) {
+      return resumo(checkout.id, reaproveitada, checkout.status);
+    }
 
+    const plano = await this.planRepository.findById(checkout.intendedPlanId);
     if (!plano) {
       throw new ValidationError({ planId: ["Plano não encontrado"] });
     }
 
     const priceId = this.exigirPrecoRemoto(plano, checkout.billingInterval);
-    const documento = exigirDocumento(company);
 
-    let resultado;
+    let sessao;
     try {
-      resultado = await this.charges.createPixCharge({
-        externalId: `${PREFIXO_EXTERNAL_ID}${checkout.id}`,
+      sessao = await this.sessions.createSession({
         priceId,
-        customer: montarCliente(company, documento),
-        // Propaga para a assinatura criada pela ValidaPay — é por aqui que um
-        // webhook de assinatura, que não traz chargeId, volta a esta tentativa.
+        // Único caminho de volta a esta tentativa. Sobrevive na consulta da
+        // sessão e propaga para a assinatura criada pela ValidaPay.
         metadata: { subscriptionCheckoutId: checkout.id },
+        successUrl: urlDeRetorno(checkout.id, "sucesso"),
+        failureUrl: urlDeRetorno(checkout.id, "falha"),
       });
     } catch (erro) {
       if (erro instanceof ValidaPayTimeoutError) {
-        // Não marca FAILED: a cobrança pode ter sido criada do outro lado.
-        // A próxima chamada reusa o mesmo externalId e recupera pelo 409.
-        logger.warn("Timeout ao criar cobrança — tentativa segue PENDING", {
+        // Não marca FAILED: a sessão pode ter sido criada do outro lado, e a
+        // tentativa segue válida. Diferente do Pix, aqui não há `externalId`
+        // para recuperar — a próxima chamada abrirá outra sessão, e a de fora
+        // fica órfã sem ser paga. Ver o risco residual documentado no relatório.
+        logger.warn("Timeout ao criar sessão — tentativa segue PENDING", {
           companyId: checkout.companyId,
           resource: "subscription_checkout",
           resourceId: checkout.id,
@@ -171,26 +166,54 @@ export class SubscriptionCheckoutService {
       throw erro;
     }
 
-    const atualizado = await this.repository.attachChargeId(
-      checkout.id,
-      resultado.chargeId,
+    // Condicional: se outra execução gravou primeiro, a dela vence e esta
+    // sessão recém-criada é simplesmente abandonada, nunca apresentada.
+    const atualizado = await this.repository.attachSession(checkout.id, sessao);
+
+    return resumo(
+      atualizado.id,
+      atualizado.externalSessionUrl ?? sessao.url,
+      atualizado.status,
     );
-
-    // Recuperação por 409 não traz o Pix — a resposta de erro não o carrega.
-    // Buscar aqui evita devolver uma tela de pagamento sem código para pagar.
-    const pix =
-      resultado.pix ??
-      (resultado.duplicated ? await this.buscarPix(resultado.chargeId) : null);
-
-    return resumo(atualizado.id, atualizado.externalChargeId, atualizado.status, pix);
   }
 
   /**
-   * Estado da tentativa para a TELA, escopado à empresa da sessão.
+   * A tentativa já tem sessão utilizável?
    *
-   * Faz **uma** chamada externa e a reaproveita para as duas coisas que a tela
-   * precisa: confirmar autoritativamente (e ativar, se pago) e obter o Pix
-   * para exibir. Consultar duas vezes seria pagar dobrado pela mesma verdade.
+   * - `string` — reaproveita esta URL, exatamente como a ValidaPay a devolveu
+   * - `null` — estado incompleto: NÃO reaproveita e NÃO cria outra
+   * - `undefined` — não há sessão; pode criar
+   *
+   * **O estado incompleto é tratado como irrecuperável de propósito.** Ter
+   * identificador sem URL só aconteceria por linha anterior a esta coluna ou
+   * escrita parcial fora deste código. As duas saídas seriam piores: derivar a
+   * URL do identificador depende de um formato que a ValidaPay não documenta, e
+   * criar outra sessão em cima de uma que já existe é justamente a duplicidade
+   * que a escrita condicional existe para evitar. Melhor parar e pedir ajuda.
+   */
+  private reaproveitarSessao(checkout: SubscriptionCheckout): string | null | undefined {
+    if (checkout.externalSessionId && checkout.externalSessionUrl) {
+      return checkout.externalSessionUrl;
+    }
+
+    if (checkout.externalSessionId && !checkout.externalSessionUrl) {
+      logger.error("Tentativa com sessão sem URL — não é possível retomar", {
+        companyId: checkout.companyId,
+        resource: "subscription_checkout",
+        resourceId: checkout.id,
+      });
+      return null;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Estado da tentativa para a página de RETORNO, escopado à empresa da sessão.
+   *
+   * Consulta a fonte oficial e ativa se houver pagamento confirmado. É o que
+   * permite a tela dizer "confirmado" sem nunca acreditar na URL que trouxe o
+   * cliente de volta.
    *
    * @throws {NotFoundError} tentativa inexistente OU de outra empresa — a
    *         distinção não é feita de propósito: dizer "existe, mas não é sua"
@@ -208,20 +231,20 @@ export class SubscriptionCheckoutService {
       throw new NotFoundError("Tentativa de contratação");
     }
 
-    // Sem cobrança ou já resolvida: não há o que consultar lá fora.
-    if (checkout.status !== "PENDING" || !checkout.externalChargeId) {
-      return resumo(checkout.id, checkout.externalChargeId, checkout.status, null);
+    if (checkout.status !== "PENDING") {
+      return resumo(checkout.id, null, checkout.status);
     }
 
-    const cobranca = await this.charges.getCharge(checkout.externalChargeId);
-    const ativou = await this.aplicarConfirmacao(checkout, cobranca);
+    // Sem cobrança conhecida ainda, o pagamento pode simplesmente não ter
+    // chegado até nós — a tela mostra "aguardando", nunca "não pago".
+    const ativou = checkout.externalChargeId
+      ? await this.confirmarSeChargePago(checkout.id)
+      : false;
 
     return resumo(
       checkout.id,
-      checkout.externalChargeId,
+      checkout.externalSessionUrl,
       ativou ? "COMPLETED" : checkout.status,
-      // Cobrança paga não precisa mais de código para pagar.
-      cobranca.paid ? null : cobranca.pix,
     );
   }
 
@@ -274,30 +297,30 @@ export class SubscriptionCheckoutService {
     }
   }
 
-  private async buscarPix(chargeId: string): Promise<PixPaymentData | null> {
-    try {
-      return (await this.charges.getCharge(chargeId)).pix;
-    } catch {
-      // O `chargeId` já está gravado; ficar sem o código para exibir é
-      // recuperável pela própria tela, e falhar aqui perderia essa gravação.
-      return null;
-    }
-  }
-
   /**
    * Confirma pela FONTE AUTORITATIVA e ativa, se pago.
    *
-   * Chamada por webhook, polling e reconciliação — os três convergem no mesmo
-   * `GET`. Idempotente: só a execução que vencer o claim atômico altera a
+   * Chamada por webhook, tela de retorno e reconciliação — os três convergem no
+   * mesmo `GET`. Idempotente: só a execução que vencer o claim atômico altera a
    * empresa.
    *
+   * @param chargeIdDoEvento cobrança que o evento trouxe. No checkout hospedado
+   *        a tentativa nasce sem cobrança — quem a revela é o evento, e este é
+   *        o ponto em que ela passa a ser conhecida.
    * @returns `true` se esta execução foi a que ativou
    */
-  async confirmarSeChargePago(subscriptionCheckoutId: string): Promise<boolean> {
-    const checkout = await this.repository.findById(subscriptionCheckoutId);
-    if (!checkout || checkout.status !== "PENDING" || !checkout.externalChargeId) {
-      return false;
+  async confirmarSeChargePago(
+    subscriptionCheckoutId: string,
+    chargeIdDoEvento: string | null = null,
+  ): Promise<boolean> {
+    let checkout = await this.repository.findById(subscriptionCheckoutId);
+    if (!checkout || checkout.status !== "PENDING") return false;
+
+    if (!checkout.externalChargeId && chargeIdDoEvento) {
+      checkout = await this.repository.attachChargeId(checkout.id, chargeIdDoEvento);
     }
+
+    if (!checkout.externalChargeId) return false;
 
     const cobranca = await this.charges.getCharge(checkout.externalChargeId);
 
@@ -307,16 +330,12 @@ export class SubscriptionCheckoutService {
   /**
    * Encerra a tentativa quando a cobrança não se concretizou.
    *
-   * **A consulta decide, não o evento.** Um `payment.failed` que se refira a
-   * uma cobrança que a API reporta `PAID` é contradição — e quem vence é a
-   * fonte autoritativa, então nesse caso a tentativa é ATIVADA em vez de
-   * encerrada. Fechar como falha ali descartaria um pagamento real por causa
-   * de um corpo de webhook fora de ordem.
+   * **A consulta decide, não o evento.** Um `payment.failed` que se refira a uma
+   * cobrança que a API reporta `PAID` é contradição — e quem vence é a fonte
+   * autoritativa, então nesse caso a tentativa é ATIVADA em vez de encerrada.
    *
-   * **Nunca toca na empresa no caminho de falha.** Uma tentativa frustrada
-   * encerra a si mesma; não rebaixa plano, não mexe em assinatura e não
-   * cancela nada. Rebaixar exigiria uma prova de cancelamento que este evento
-   * não é.
+   * **Nunca toca na empresa.** Uma tentativa frustrada encerra a si mesma; não
+   * rebaixa plano, não mexe em assinatura e não cancela nada.
    *
    * @returns `true` se esta execução ativou — isto é, se a cobrança estava paga
    */
@@ -346,8 +365,7 @@ export class SubscriptionCheckoutService {
   /**
    * Decide e ativa a partir de um snapshot JÁ obtido.
    *
-   * Separado de `confirmarSeChargePago` para que a tela consulte a cobrança
-   * uma vez só. **Toda a regra de ativação vive aqui** — webhook, polling e
+   * **Toda a regra de ativação vive aqui** — webhook, tela de retorno e
    * reconciliação convergem neste método, e não em três cópias dele.
    */
   private async aplicarConfirmacao(
@@ -388,56 +406,35 @@ export class SubscriptionCheckoutService {
 
     return priceId;
   }
-
-  private async carregarEmpresa(companyId: string): Promise<Company> {
-    const company = await this.companyRepository.findById(companyId);
-    if (!company) {
-      throw new ValidationError({ companyId: ["Empresa não encontrada"] });
-    }
-    return company;
-  }
 }
 
 function resumo(
   checkoutId: string,
-  chargeId: string | null,
+  url: string | null,
   status: SubscriptionCheckoutStatus,
-  pix: PixPaymentData | null,
 ): CheckoutResumo {
-  return { checkoutId, chargeId, status, pix };
+  return { checkoutId, url, status };
 }
 
 /**
- * A ValidaPay exige CPF/CNPJ do comprador mesmo sem cliente pré-cadastrado.
- * Sem ele a cobrança é recusada — melhor dizer isso antes de abrir a tentativa.
+ * Para onde a ValidaPay devolve o cliente.
+ *
+ * **Destino fechado, montado no servidor.** A tentativa viaja no caminho, e não
+ * o resultado: a página de retorno consulta o estado real e nunca acredita na
+ * URL que trouxe o visitante. `desfecho` só escolhe o texto exibido.
  */
-function exigirDocumento(company: Company): string {
-  const documento = company.cnpj?.replace(/\D/g, "") ?? "";
+function urlDeRetorno(subscriptionCheckoutId: string, desfecho: "sucesso" | "falha") {
+  const parametros = new URLSearchParams({ checkout: subscriptionCheckoutId, desfecho });
 
-  if (documento.length !== 11 && documento.length !== 14) {
-    throw new ValidationError({
-      cnpj: ["Informe o CNPJ da empresa antes de contratar um plano"],
-    });
-  }
-
-  return documento;
-}
-
-function montarCliente(company: Company, documentNumber: string): ChargeCustomer {
-  return {
-    name: company.name,
-    email: company.email,
-    documentNumber,
-    ...(company.phone ? { phone: company.phone } : {}),
-  };
+  return `${env.NEXT_PUBLIC_APP_URL}${ROUTES.BILLING_CHECKOUT_RETURN}?${parametros.toString()}`;
 }
 
 /**
  * Erro que a mesma requisição repetida não resolveria.
  *
- * 4xx (fora de 429) é dado recusado: falta campo, preço não existe, formato
- * inválido. 5xx e rede ficam de fora de propósito — são transitórios, e marcar
- * `FAILED` neles fecharia uma tentativa que ainda poderia ser recuperada.
+ * 4xx (fora de 429) é dado recusado: preço inexistente, formato inválido. 5xx e
+ * rede ficam de fora de propósito — são transitórios, e marcar `FAILED` neles
+ * fecharia uma tentativa que ainda poderia ser recuperada.
  */
 function naoAdiantaRepetir(erro: unknown): boolean {
   return (

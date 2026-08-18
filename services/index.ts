@@ -14,6 +14,7 @@ import { PrismaPaymentRepository } from "@/repositories/implementations/PrismaPa
 import { PrismaSubscriptionCheckoutRepository } from "@/repositories/implementations/PrismaSubscriptionCheckoutRepository";
 import { PrismaPaymentProviderEventRepository } from "@/repositories/implementations/PrismaPaymentProviderEventRepository";
 import { validaPayCharges } from "@/lib/validapay/charges";
+import { validaPayCheckoutSessions } from "@/lib/validapay/checkout-sessions";
 import { validaPaySubscriptions } from "@/lib/validapay/subscriptions";
 import { AuditService } from "@/services/AuditService";
 import { AuthService } from "@/services/AuthService";
@@ -124,7 +125,7 @@ export const reportService = new ReportService(reportRepository);
 export const subscriptionCheckoutService = new SubscriptionCheckoutService(
   subscriptionCheckoutRepository,
   planRepository,
-  companyRepository,
+  validaPayCheckoutSessions,
   validaPayCharges,
 );
 

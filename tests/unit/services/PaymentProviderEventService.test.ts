@@ -27,6 +27,7 @@ const CHECKOUT: SubscriptionCheckout = {
   billingInterval: "MONTHLY",
   provider: "VALIDAPAY",
   externalSessionId: null,
+  externalSessionUrl: null,
   externalChargeId: "cha_1",
   status: "PENDING",
   createdAt: new Date("2026-08-10T18:00:00Z"),
@@ -202,7 +203,7 @@ describe("evento novo", () => {
     expect(resultado.status).toBe("PROCESSED");
     expect(resultado.ativou).toBe(true);
     // O webhook é gatilho: quem decide é o GET /v1/charges dentro do service.
-    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1");
+    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1", "cha_1");
   });
 
   it("NUNCA ativa usando o status do payload", async () => {
@@ -368,7 +369,7 @@ describe("correlação", () => {
     await service.processar(corpo({ event: "payment.success", chargeId: "cha_1" }));
 
     expect(checkouts.findByChargeId).toHaveBeenCalledWith("cha_1");
-    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1");
+    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1", "cha_1");
   });
 
   it("B: por metadata do corpo quando não há chargeId", async () => {
@@ -392,7 +393,7 @@ describe("correlação", () => {
       }),
     );
 
-    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1");
+    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1", null);
   });
 
   it("B: metadata que CONTRADIZ o chargeId do corpo é recusada", async () => {
@@ -441,7 +442,7 @@ describe("correlação", () => {
     );
 
     expect(assinaturas.getSubscription).toHaveBeenCalledWith("sub_1");
-    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1");
+    expect(checkoutService.confirmarSeChargePago).toHaveBeenCalledWith("chk_1", null);
   });
 
   it("não correlacionável vira FAILED", async () => {

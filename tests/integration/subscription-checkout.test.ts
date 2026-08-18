@@ -204,7 +204,7 @@ describe("ativação atômica", () => {
           subscriptionCheckoutId: checkout.id,
           companyId: empresa.id,
           intendedPlanId: plano.id,
-          validapaySubscriptionId: "sub_1",
+          validapaySubscriptionId: `sub_${randomUUID()}`,
         }),
       ),
     );
@@ -216,7 +216,7 @@ describe("ativação atômica", () => {
     });
     expect(empresaDepois.planId).toBe(plano.id);
     expect(empresaDepois.subscriptionStatus).toBe("ACTIVE");
-    expect(empresaDepois.validapaySubscriptionId).toBe("sub_1");
+    expect(empresaDepois.validapaySubscriptionId).toMatch(/^sub_/);
 
     const checkoutDepois = await prisma.subscriptionCheckout.findUniqueOrThrow({
       where: { id: checkout.id },
@@ -239,7 +239,7 @@ describe("ativação atômica", () => {
       subscriptionCheckoutId: checkout.id,
       companyId: empresa.id,
       intendedPlanId: plano.id,
-      validapaySubscriptionId: "sub_1",
+      validapaySubscriptionId: `sub_${randomUUID()}`,
     };
 
     expect(await repository.activateIfPending(entrada)).toBe(true);
@@ -258,9 +258,10 @@ describe("ativação atômica", () => {
   it("subscriptionId null não apaga o identificador já gravado", async () => {
     const empresa = await novaEmpresa();
     const plano = await planoPadrao();
+    const jaConhecido = `sub_conhecido_${randomUUID()}`;
     await prisma.company.update({
       where: { id: empresa.id },
-      data: { validapaySubscriptionId: "sub_ja_conhecido" },
+      data: { validapaySubscriptionId: jaConhecido },
     });
 
     const { checkout } = await repository.findOrCreatePending({
@@ -278,7 +279,7 @@ describe("ativação atômica", () => {
     });
 
     const depois = await prisma.company.findUniqueOrThrow({ where: { id: empresa.id } });
-    expect(depois.validapaySubscriptionId).toBe("sub_ja_conhecido");
+    expect(depois.validapaySubscriptionId).toBe(jaConhecido);
   });
 
   it("tentativa FAILED não pode ser ativada", async () => {

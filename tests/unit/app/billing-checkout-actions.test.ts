@@ -30,7 +30,8 @@ const CAMINHO_ACTIONS = join(
   "actions.ts",
 );
 
-const PIX = { emv: "emv-sintetico-de-teste", qrCodeImage: null };
+/** URL devolvida pela ValidaPay. O Fluxy nunca a monta — só a repassa. */
+const URL_HOSPEDADA = "https://app.validapay.com.br/pagamento/cs_sintetico";
 
 const iniciarCheckout = vi.fn();
 const consultarParaExibicao = vi.fn();
@@ -110,13 +111,12 @@ describe("iniciarCheckoutAction", () => {
     },
   );
 
-  it("OWNER inicia e recebe o Pix para exibição", async () => {
+  it("OWNER inicia e recebe a URL do checkout hospedado", async () => {
     montarAmbiente({ companyId: "company_1", role: "OWNER" });
     iniciarCheckout.mockResolvedValue({
       checkoutId: "chk_1",
-      chargeId: "cha_1",
+      url: URL_HOSPEDADA,
       status: "PENDING",
-      pix: PIX,
     });
     const { iniciarCheckoutAction } = await carregarActions();
 
@@ -126,7 +126,7 @@ describe("iniciarCheckoutAction", () => {
     });
 
     expect(resultado.data?.status).toBe("PENDING");
-    expect(resultado.data?.pix).toEqual(PIX);
+    expect(resultado.data?.url).toBe(URL_HOSPEDADA);
   });
 
   it("input inválido é recusado pelo schema, sem chamar o service", async () => {
@@ -182,9 +182,8 @@ describe("iniciarCheckoutAction", () => {
     montarAmbiente({ companyId: "company_da_sessao", role: "OWNER" });
     iniciarCheckout.mockResolvedValue({
       checkoutId: "chk_1",
-      chargeId: "cha_1",
+      url: URL_HOSPEDADA,
       status: "PENDING",
-      pix: PIX,
     });
     const { iniciarCheckoutAction } = await carregarActions();
 
@@ -196,139 +195,9 @@ describe("iniciarCheckoutAction", () => {
     });
 
     const [input, company] = iniciarCheckout.mock.calls[0]!;
-    expect(company.companyId).toBe("company_da_sessao");
+    // O service passou a receber só o essencial: identificador e papel.
+    expect(company).toEqual({ id: "company_da_sessao", role: "OWNER" });
     expect(input).toEqual({ planId: "plan_pro", billingInterval: "MONTHLY" });
-  });
-});
-
-describe("verificarStatusCheckoutAction", () => {
-  it("sem sessão é bloqueado", async () => {
-    montarAmbiente(null);
-    const { verificarStatusCheckoutAction } = await carregarActions();
-
-    await expect(verificarStatusCheckoutAction("chk_1")).rejects.toBeInstanceOf(
-      RedirectError,
-    );
-    expect(consultarParaExibicao).not.toHaveBeenCalled();
-  });
-
-  it("consulta escopada pela empresa da sessão", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    consultarParaExibicao.mockResolvedValue({
-      checkoutId: "chk_1",
-      chargeId: "cha_1",
-      status: "PENDING",
-      pix: PIX,
-    });
-    const { verificarStatusCheckoutAction } = await carregarActions();
-
-    const resultado = await verificarStatusCheckoutAction("chk_1");
-
-    expect(consultarParaExibicao).toHaveBeenCalledWith("chk_1", "company_1");
-    expect(resultado.data?.status).toBe("PENDING");
-  });
-
-  it("PAID confirmado devolve COMPLETED", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    consultarParaExibicao.mockResolvedValue({
-      checkoutId: "chk_1",
-      chargeId: "cha_1",
-      status: "COMPLETED",
-      pix: null,
-    });
-    const { verificarStatusCheckoutAction } = await carregarActions();
-
-    const resultado = await verificarStatusCheckoutAction("chk_1");
-
-    expect(resultado.data?.status).toBe("COMPLETED");
-    // Cobrança paga não precisa mais de código para pagar.
-    expect(resultado.data?.pix).toBeNull();
-  });
-
-  it("checkout de OUTRA empresa não é encontrado", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    const { NotFoundError } = await errosDoRegistroAtual();
-    consultarParaExibicao.mockRejectedValue(
-      new NotFoundError("Tentativa de contratação"),
-    );
-    const { verificarStatusCheckoutAction } = await carregarActions();
-
-    const resultado = await verificarStatusCheckoutAction("chk_da_empresa_b");
-
-    expect(resultado.data).toBeUndefined();
-    expect(resultado.error).toBeDefined();
-    // O escopo foi aplicado na consulta, com a empresa da sessão.
-    expect(consultarParaExibicao).toHaveBeenCalledWith("chk_da_empresa_b", "company_1");
-  });
-
-  it("id inválido é recusado sem chamar o service", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    const { verificarStatusCheckoutAction } = await carregarActions();
-
-    for (const invalido of ["", null, 42, undefined]) {
-      const resultado = await verificarStatusCheckoutAction(invalido);
-      expect(resultado.error).toBeDefined();
-    }
-    expect(consultarParaExibicao).not.toHaveBeenCalled();
-  });
-});
-
-describe("recuperarCheckoutAction", () => {
-  it("sem sessão é bloqueado", async () => {
-    montarAmbiente(null);
-    const { recuperarCheckoutAction } = await carregarActions();
-
-    await expect(recuperarCheckoutAction("chk_1")).rejects.toBeInstanceOf(RedirectError);
-    expect(garantirChargeCriado).not.toHaveBeenCalled();
-  });
-
-  it("reaproveita a MESMA tentativa — nunca cria outra", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    garantirChargeCriado.mockResolvedValue({
-      checkoutId: "chk_1",
-      chargeId: "cha_1",
-      status: "PENDING",
-      pix: PIX,
-    });
-    const { recuperarCheckoutAction } = await carregarActions();
-
-    const resultado = await recuperarCheckoutAction("chk_1");
-
-    // O mesmo id entra e sai: mesmo externalId determinístico, mesmo chargeId.
-    expect(garantirChargeCriado).toHaveBeenCalledWith("chk_1");
-    expect(resultado.data?.checkoutId).toBe("chk_1");
-    // Recuperar JAMAIS passa por iniciarCheckout, que abriria outra tentativa.
-    expect(iniciarCheckout).not.toHaveBeenCalled();
-  });
-
-  it("valida o escopo ANTES de qualquer chamada externa", async () => {
-    montarAmbiente({ companyId: "company_1", role: "OWNER" });
-    const { NotFoundError } = await errosDoRegistroAtual();
-    exigirTentativaDaEmpresa.mockRejectedValue(
-      new NotFoundError("Tentativa de contratação"),
-    );
-    const { recuperarCheckoutAction } = await carregarActions();
-
-    const resultado = await recuperarCheckoutAction("chk_da_empresa_b");
-
-    expect(resultado.error).toBeDefined();
-    expect(exigirTentativaDaEmpresa).toHaveBeenCalledWith(
-      "chk_da_empresa_b",
-      "company_1",
-    );
-    // Nenhuma requisição à ValidaPay por causa de um id alheio.
-    expect(garantirChargeCriado).not.toHaveBeenCalled();
-  });
-
-  it.each<Role>(["ADMIN", "FINANCE", "VIEWER"])("%s não pode recuperar", async (role) => {
-    montarAmbiente({ companyId: "company_1", role });
-    const { recuperarCheckoutAction } = await carregarActions();
-
-    const resultado = await recuperarCheckoutAction("chk_1");
-
-    expect(resultado.error).toBeDefined();
-    expect(exigirTentativaDaEmpresa).not.toHaveBeenCalled();
-    expect(garantirChargeCriado).not.toHaveBeenCalled();
   });
 });
 
@@ -340,7 +209,11 @@ describe("defesa estrutural", () => {
 
     // Toda empresa usada vem de requireCompany(); nada lê companyId da entrada.
     expect(fonte).not.toMatch(/input\.companyId|\.companyId\s*\?\?/);
-    expect(fonte.match(/requireCompany\(\)/g)?.length).toBe(4);
+    // Uma chamada por action, seja qual for o número delas: o invariante é
+    // "toda action tira a empresa da sessão", não um total fixo.
+    const acoes = fonte.match(/export async function/g)?.length ?? 0;
+    expect(acoes).toBeGreaterThan(0);
+    expect(fonte.match(/requireCompany\(\)/g)?.length).toBe(acoes);
   });
 
   it("nenhuma action ativa plano por conta própria", () => {
