@@ -34,9 +34,6 @@ const CAMINHO_ACTIONS = join(
 const URL_HOSPEDADA = "https://app.validapay.com.br/pagamento/cs_sintetico";
 
 const iniciarCheckout = vi.fn();
-const consultarParaExibicao = vi.fn();
-const garantirChargeCriado = vi.fn();
-const exigirTentativaDaEmpresa = vi.fn();
 
 class RedirectError extends Error {
   constructor() {
@@ -54,9 +51,6 @@ function montarAmbiente(sessao: { companyId: string; role: Role } | null) {
   vi.doMock("@/services", () => ({
     subscriptionCheckoutService: {
       iniciarCheckout,
-      consultarParaExibicao,
-      garantirChargeCriado,
-      exigirTentativaDaEmpresa,
     },
     subscriptionReconciliationService: { reconcilePending: vi.fn() },
   }));
@@ -68,15 +62,7 @@ async function carregarActions() {
 
 beforeEach(() => {
   vi.resetModules();
-  for (const espiao of [
-    iniciarCheckout,
-    consultarParaExibicao,
-    garantirChargeCriado,
-    exigirTentativaDaEmpresa,
-  ]) {
-    espiao.mockReset();
-  }
-  exigirTentativaDaEmpresa.mockResolvedValue(undefined);
+  iniciarCheckout.mockReset();
 });
 
 afterEach(() => {
