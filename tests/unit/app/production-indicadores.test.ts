@@ -17,6 +17,7 @@ function pedido(
     priority: "NORMAL" as OrderPriority,
     expectedDeliveryDate: null,
     total: null,
+    itemCount: 1,
     createdAt: new Date("2026-08-10T12:00:00Z"),
     customer: { id: "cliente-1", name: "Cliente Teste" },
     ...overrides,

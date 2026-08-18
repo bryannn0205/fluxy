@@ -120,29 +120,35 @@ export function toClientOrderListItem(
 /**
  * Indicadores do painel já filtrados pelo papel de quem pergunta.
  *
- * `monthRevenue` é `number | null` pela mesma convenção de
+ * `monthRevenue` e `todayRevenue` são `number | null` pela mesma convenção de
  * {@link ClientOrderListItem.total}: `null` significa "este papel não pode ver
  * faturamento", nunca "a empresa não faturou". As contagens operacionais ao
- * lado — pedidos no mês, em produção, prontos, atrasados — não carregam
+ * lado — pedidos no mês, hoje, em produção, prontos, atrasados — não carregam
  * dinheiro e valem para todo mundo que enxerga o painel.
  */
-export type DashboardStats = Omit<OrderStatsData, "monthRevenue"> & {
+export type DashboardStats = Omit<OrderStatsData, "monthRevenue" | "todayRevenue"> & {
   monthRevenue: number | null;
+  todayRevenue: number | null;
 };
 
 /**
  * Apaga o faturamento de quem não tem `reports:viewSales`.
  *
- * A chave é descartada por desestruturação, e não zerada: um `monthRevenue: 0`
- * seria indistinguível de uma empresa que não vendeu, e ainda assim manteria o
- * campo no payload — o que o inspetor do navegador mostraria.
+ * As chaves são descartadas por desestruturação, e não zeradas: um
+ * `monthRevenue: 0` seria indistinguível de uma empresa que não vendeu, e ainda
+ * assim manteria o campo no payload — o que o inspetor do navegador mostraria.
+ * O mesmo vale para o faturamento do dia.
  */
 export function toDashboardStats(
   stats: OrderStatsData,
   canViewRevenue: boolean,
 ): DashboardStats {
-  const { monthRevenue, ...resto } = stats;
-  return { ...resto, monthRevenue: canViewRevenue ? monthRevenue : null };
+  const { monthRevenue, todayRevenue, ...resto } = stats;
+  return {
+    ...resto,
+    monthRevenue: canViewRevenue ? monthRevenue : null,
+    todayRevenue: canViewRevenue ? todayRevenue : null,
+  };
 }
 
 // Formato enxuto para o board de Produção — só os campos que um card do
@@ -158,17 +164,31 @@ export type KanbanOrder = Prisma.OrderGetPayload<{
     total: true;
     createdAt: true;
     customer: { select: { id: true; name: true } };
+    _count: { select: { items: true } };
   };
 }>;
 
-export type ClientKanbanOrder = Omit<KanbanOrder, "total"> & { total: number | null };
+/**
+ * O `_count` aninhado do Prisma vira um `itemCount` raso de propósito: a forma
+ * aninhada é detalhe do ORM e não tem por que atravessar a fronteira do
+ * servidor. O cartão precisa saber QUANTOS itens o pedido tem — nunca quais,
+ * que o drawer busca sob demanda.
+ */
+export type ClientKanbanOrder = Omit<KanbanOrder, "total" | "_count"> & {
+  total: number | null;
+  itemCount: number;
+};
 
 export function toClientKanbanOrder(
   order: KanbanOrder,
   canViewFinancials: boolean,
 ): ClientKanbanOrder {
-  const { total, ...resto } = order;
-  return { ...resto, total: canViewFinancials ? Number(total) : null };
+  const { total, _count, ...resto } = order;
+  return {
+    ...resto,
+    total: canViewFinancials ? Number(total) : null,
+    itemCount: _count.items,
+  };
 }
 
 /**

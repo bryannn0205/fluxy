@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -26,6 +26,13 @@ import { updateOrderStatusAction } from "@/app/dashboard/orders/actions";
 import { KanbanColumn } from "@/app/dashboard/production/_components/KanbanColumn";
 import { ProductionMetrics } from "@/app/dashboard/production/_components/ProductionMetrics";
 import { OrderDrawer } from "@/app/dashboard/production/_components/OrderDrawer";
+import { ProductionFilters } from "@/app/dashboard/production/_components/ProductionFilters";
+import {
+  FILTROS_LIMPOS,
+  aplicarFiltros,
+  haFiltroAtivo,
+  type FiltrosDeProducao,
+} from "@/app/dashboard/production/_components/filtros";
 
 // Sem isso, o DndContext usa os textos padrão em inglês da biblioteca para
 // leitor de tela — inconsistente com o resto da interface em pt-BR e é a
@@ -62,16 +69,28 @@ const announcements: Announcements = {
   },
 };
 
+interface KanbanBoardProps {
+  initialOrders: ClientKanbanOrder[];
+  readOnly?: boolean;
+  /** Do servidor: pedidos criados hoje na empresa, independentes do board. */
+  todayOrderCount: number;
+  /** `null` sem `reports:viewSales` — o valor não chegou ao navegador. */
+  todayRevenue: number | null;
+  /** `orders:viewFinancials`, que governa o total somado por coluna. */
+  mostrarTotaisPorColuna: boolean;
+}
+
 export function KanbanBoard({
   initialOrders,
   readOnly = false,
-}: {
-  initialOrders: ClientKanbanOrder[];
-  readOnly?: boolean;
-}) {
+  todayOrderCount,
+  todayRevenue,
+  mostrarTotaisPorColuna,
+}: KanbanBoardProps) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
   const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
+  const [filtros, setFiltros] = useState<FiltrosDeProducao>(FILTROS_LIMPOS);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
@@ -85,6 +104,17 @@ export function KanbanBoard({
   useEffect(() => {
     setOrders(initialOrders);
   }, [initialOrders]);
+
+  // O filtro não é remontado a cada `router.refresh()`: ele é estado da
+  // sessão de trabalho, e limpá-lo sozinho depois de mover um cartão faria o
+  // board inteiro reaparecer no meio da tarefa.
+  const filtroAtivo = haFiltroAtivo(filtros);
+  const ordersVisiveis = useMemo(
+    () => (filtroAtivo ? aplicarFiltros(orders, filtros) : orders),
+    [orders, filtros, filtroAtivo],
+  );
+
+  const limparFiltros = useCallback(() => setFiltros(FILTROS_LIMPOS), []);
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -127,6 +157,16 @@ export function KanbanBoard({
   }
 
   const abrirPedido = useCallback((orderId: string) => setPedidoAberto(orderId), []);
+
+  // O pedido continua existindo — só saiu da vista. Fechar o painel sozinho
+  // seria arrancar da mão de quem estava lendo; deixá-lo mudo apontaria para
+  // um cartão que o usuário não encontra mais. Então ele avisa e oferece a
+  // saída. Nenhum filtro atual reage a mudança de etapa, mas mexer no filtro
+  // com o painel aberto chega aqui.
+  const pedidoForaDoFiltro =
+    pedidoAberto !== null &&
+    filtroAtivo &&
+    !ordersVisiveis.some((order) => order.id === pedidoAberto);
 
   const fecharPedido = useCallback((aberto: boolean) => {
     if (!aberto) setPedidoAberto(null);
@@ -178,7 +218,19 @@ export function KanbanBoard({
             em que ele muda de coluna. Calculados no servidor, ficariam um
             `router.refresh()` atrasados e exibiriam um número que não confere
             com o que está à vista. */}
-        <ProductionMetrics orders={orders} />
+        <ProductionMetrics
+          orders={orders}
+          todayOrderCount={todayOrderCount}
+          todayRevenue={todayRevenue}
+        />
+
+        <ProductionFilters
+          filtros={filtros}
+          onChange={setFiltros}
+          onLimpar={limparFiltros}
+          visiveis={ordersVisiveis.length}
+          total={orders.length}
+        />
 
         {/* Abaixo de lg o board rola na horizontal em vez de empilhar quatro
             colunas: empilhado, o operador perde a leitura de fluxo entre etapas,
@@ -191,8 +243,10 @@ export function KanbanBoard({
               <KanbanColumn
                 key={status}
                 status={status}
-                orders={orders.filter((order) => order.status === status)}
+                orders={ordersVisiveis.filter((order) => order.status === status)}
                 onAbrirPedido={abrirPedido}
+                mostrarTotal={mostrarTotaisPorColuna}
+                filtroAtivo={filtroAtivo}
               />
             ))}
           </div>
@@ -206,6 +260,8 @@ export function KanbanBoard({
         onOpenChange={fecharPedido}
         podeAvancar={!readOnly}
         onEtapaAvancada={aplicarAvanco}
+        foraDoFiltro={pedidoForaDoFiltro}
+        onLimparFiltros={limparFiltros}
       />
     </DndContext>
   );

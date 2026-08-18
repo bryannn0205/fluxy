@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, CalendarClock, Clock } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, Package } from "lucide-react";
 
 import { PriorityBadge } from "@/components/common/PriorityBadge";
 import { isOverdue as computeIsOverdue } from "@/lib/dates";
@@ -136,16 +136,28 @@ export function KanbanCard({
 
       <p className="mt-1.5 truncate text-sm font-medium">{order.customer.name}</p>
 
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-        <span className="inline-flex items-center gap-1.5 text-muted-foreground tabular-nums">
-          <Clock className="size-3.5 shrink-0" aria-hidden="true" />
-          {formatarEntrada(order.createdAt)}
-        </span>
+      {/* Envolve em vez de comprimir: sem `flex-wrap`, o cartão estreito
+          quebrava "2 itens" no meio da palavra. Cada item é indivisível
+          (`whitespace-nowrap`); quando falta largura, é o valor que desce. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-xs">
+        <div className="flex min-w-0 items-center gap-2.5 text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
+            <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+            {formatarEntrada(order.createdAt)}
+          </span>
+
+          {/* Quantos, nunca quais: o board recebe só a contagem do banco, e o
+              detalhe dos itens fica com o drawer. Ver ORDER_KANBAN_SELECT. */}
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums">
+            <Package className="size-3.5 shrink-0" aria-hidden="true" />
+            {order.itemCount === 1 ? "1 item" : `${order.itemCount} itens`}
+          </span>
+        </div>
 
         {/* Ausente para papéis sem `orders:viewFinancials` — o valor nem chega
             ao componente nesse caso. Ver toClientKanbanOrder. */}
         {order.total !== null && (
-          <span className="font-mono text-sm font-semibold tabular-nums">
+          <span className="shrink-0 font-mono text-sm font-semibold whitespace-nowrap tabular-nums">
             {formatCurrency(order.total)}
           </span>
         )}

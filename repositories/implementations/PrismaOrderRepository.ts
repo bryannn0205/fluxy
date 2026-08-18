@@ -1,5 +1,5 @@
 import type { OrderStatus, Prisma, PrismaClient } from "@/lib/generated/prisma/client";
-import { overdueCutoff, startOfMonthBrazil } from "@/lib/dates";
+import { overdueCutoff, startOfDaysAgoBrazil, startOfMonthBrazil } from "@/lib/dates";
 import {
   EXPORT_BATCH_SIZE,
   KANBAN_COMPLETED_WINDOW_DAYS,
@@ -57,6 +57,11 @@ const ORDER_KANBAN_SELECT = {
   total: true,
   createdAt: true,
   customer: { select: { id: true, name: true } },
+  // Só a contagem, nunca os itens. O cartão mostra "3 itens"; quem quer saber
+  // QUAIS abre o drawer, que busca o detalhe sob demanda. Trazer os itens de
+  // todos os pedidos do board multiplicaria o payload por uma informação que
+  // a maioria dos cartões nunca chega a exibir.
+  _count: { select: { items: true } },
 } as const;
 
 const ORDER_EXPORT_SELECT = {
@@ -399,14 +404,30 @@ export class PrismaOrderRepository implements OrderRepository {
   async getStats(companyId: string): Promise<OrderStats> {
     const now = new Date();
     const startOfMonth = startOfMonthBrazil(now);
+    // Meia-noite de hoje em Brasília, não em UTC: às 22h de São Paulo já é o
+    // dia seguinte em UTC, e "pedidos hoje" zeraria duas horas antes da hora.
+    const startOfToday = startOfDaysAgoBrazil(0, now);
 
-    const [monthAgg, pendingCount, processingCount, readyCount, overdueCount] =
+    const [monthAgg, todayAgg, pendingCount, processingCount, readyCount, overdueCount] =
       await Promise.all([
         this.prisma.order.aggregate({
           where: {
             companyId,
             deletedAt: null,
             createdAt: { gte: startOfMonth },
+            status: { not: "CANCELLED" },
+          },
+          _sum: { total: true },
+          _count: true,
+        }),
+        // Mesmo recorte do mês — soft-deleted fora, cancelado fora, contado
+        // pela data de criação. Só a janela muda, para o número do dia e o do
+        // mês nunca medirem coisas diferentes.
+        this.prisma.order.aggregate({
+          where: {
+            companyId,
+            deletedAt: null,
+            createdAt: { gte: startOfToday },
             status: { not: "CANCELLED" },
           },
           _sum: { total: true },
@@ -434,6 +455,8 @@ export class PrismaOrderRepository implements OrderRepository {
     return {
       monthRevenue: Number(monthAgg._sum.total ?? 0),
       monthOrderCount: monthAgg._count,
+      todayRevenue: Number(todayAgg._sum.total ?? 0),
+      todayOrderCount: todayAgg._count,
       pendingCount,
       processingCount,
       readyCount,

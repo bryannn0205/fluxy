@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowRight, ExternalLink, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -92,6 +92,9 @@ interface OrderDrawerProps {
   podeAvancar: boolean;
   /** Avisa o board para mover o cartão sem recarregar a página. */
   onEtapaAvancada: (orderId: string, novoStatus: OrderStatus) => void;
+  /** O pedido aberto deixou de aparecer no board por causa de um filtro. */
+  foraDoFiltro: boolean;
+  onLimparFiltros: () => void;
 }
 
 export function OrderDrawer({
@@ -99,6 +102,8 @@ export function OrderDrawer({
   onOpenChange,
   podeAvancar,
   onEtapaAvancada,
+  foraDoFiltro,
+  onLimparFiltros,
 }: OrderDrawerProps) {
   const [pedido, setPedido] = useState<ClientOrderDetail | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -215,6 +220,30 @@ export function OrderDrawer({
                 ))}
               </div>
             </SheetHeader>
+
+            {/* Sem este aviso, fechar o painel devolveria o usuário a um board
+                onde o pedido que ele acabou de ler simplesmente não está — sem
+                explicação e sem caminho de volta. O painel não se fecha
+                sozinho: o pedido continua existindo, e quem estava lendo não
+                pediu para parar. */}
+            {foraDoFiltro && (
+              <div
+                role="status"
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-400/25 bg-amber-400/12 px-5 py-2.5 text-xs"
+              >
+                <EyeOff className="size-3.5 shrink-0 text-amber-300" aria-hidden="true" />
+                <span className="text-pretty text-muted-foreground">
+                  Este pedido não corresponde aos filtros ativos do board.
+                </span>
+                <button
+                  type="button"
+                  onClick={onLimparFiltros}
+                  className="rounded font-medium text-amber-300 underline underline-offset-4 hover:text-amber-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               {aba === "detalhes" ? (

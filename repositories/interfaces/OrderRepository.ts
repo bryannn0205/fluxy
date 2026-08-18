@@ -60,6 +60,14 @@ export type OrderExportOptions = Pick<
 export interface OrderStats {
   monthRevenue: number;
   monthOrderCount: number;
+  /**
+   * Pedidos criados hoje e a receita correspondente, no mesmo recorte de
+   * `monthRevenue` — apenas a janela muda de mês para dia. Receita aqui é
+   * soma de `total` de pedidos não cancelados pela data de CRIAÇÃO, não pelo
+   * que foi recebido; quem quer dinheiro que entrou olha contas a receber.
+   */
+  todayOrderCount: number;
+  todayRevenue: number;
   pendingCount: number;
   processingCount: number;
   readyCount: number;

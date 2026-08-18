@@ -4,6 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Inbox } from "lucide-react";
 
 import { ORDER_STATUS_LABELS, ORDER_STATUS_STYLES } from "@/lib/constants";
+import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { OrderStatus } from "@/lib/generated/prisma/client";
 import type { ClientKanbanOrder } from "@/types/orders";
@@ -13,11 +14,32 @@ interface KanbanColumnProps {
   status: OrderStatus;
   orders: ClientKanbanOrder[];
   onAbrirPedido: (orderId: string) => void;
+  /**
+   * Decidido no servidor por `orders:viewFinancials`, não pelo valor dos
+   * cartões: sem permissão, `order.total` vem `null` e somar daria zero — um
+   * número falso, pior que número nenhum.
+   */
+  mostrarTotal: boolean;
+  /** Muda o texto do vazio: "não tem" e "não passou no filtro" não são a mesma coisa. */
+  filtroAtivo: boolean;
 }
 
-export function KanbanColumn({ status, orders, onAbrirPedido }: KanbanColumnProps) {
+export function KanbanColumn({
+  status,
+  orders,
+  onAbrirPedido,
+  mostrarTotal,
+  filtroAtivo,
+}: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const tituloId = `coluna-${status}`;
+
+  // Soma o que a coluna está mostrando, não o que ela tem: o contador ao lado
+  // já conta os cartões filtrados, e um valor que discordasse dele faria o
+  // usuário desconfiar dos dois.
+  const total = mostrarTotal
+    ? orders.reduce((soma, order) => soma + (order.total ?? 0), 0)
+    : null;
 
   return (
     <section
@@ -31,10 +53,17 @@ export function KanbanColumn({ status, orders, onAbrirPedido }: KanbanColumnProp
         isOver && "border-primary/50 bg-[var(--panel-surface)]",
       )}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-3">
-        <h2 id={tituloId} className="truncate text-sm font-semibold">
-          {ORDER_STATUS_LABELS[status]}
-        </h2>
+      <header className="flex items-start justify-between gap-2 border-b border-border/70 px-4 py-3">
+        <div className="min-w-0">
+          <h2 id={tituloId} className="truncate text-sm font-semibold">
+            {ORDER_STATUS_LABELS[status]}
+          </h2>
+          {total !== null && (
+            <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground tabular-nums">
+              {formatCurrency(total)}
+            </p>
+          )}
+        </div>
         <span
           className={cn(
             "inline-flex min-w-7 shrink-0 items-center justify-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums",
@@ -60,8 +89,12 @@ export function KanbanColumn({ status, orders, onAbrirPedido }: KanbanColumnProp
             )}
           >
             <Inbox className="size-5 text-muted-foreground/50" aria-hidden="true" />
-            <p className="text-xs text-muted-foreground/70">
-              {isOver ? "Solte aqui" : "Nenhum pedido nesta etapa"}
+            <p className="text-xs text-pretty text-muted-foreground/70">
+              {isOver
+                ? "Solte aqui"
+                : filtroAtivo
+                  ? "Nenhum pedido corresponde aos filtros"
+                  : "Nenhum pedido nesta etapa"}
             </p>
           </div>
         ) : (

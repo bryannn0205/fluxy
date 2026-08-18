@@ -15,7 +15,18 @@ export default async function ProductionPage() {
   const canViewFinancials = can(role, "orders", "viewFinancials");
   const canUpdateStage = can(role, "production", "updateStage");
 
-  const orders = await orderService.listForKanban(companyId);
+  // Os indicadores do dia não saem do board: ele não conhece o dia inteiro
+  // (cancelados nunca entram, e COMPLETED só dos últimos dias), então "pedidos
+  // criados hoje" precisa vir de uma consulta própria.
+  const [orders, stats] = await Promise.all([
+    orderService.listForKanban(companyId),
+    // Recebe `role` porque é ele quem decide o faturamento: sem
+    // `reports:viewSales`, `todayRevenue` volta `null` do serviço e o número
+    // nunca chega a existir no payload — o cartão some por não ter dado, não
+    // por estar escondido.
+    orderService.getStats(companyId, role),
+  ]);
+
   // O valor é retirado aqui, no servidor. Quem não tem `orders:viewFinancials`
   // recebe `total: null` — o número não chega ao componente nem ao payload RSC.
   const clientOrders = orders.map((order) =>
@@ -51,7 +62,13 @@ export default async function ProductionPage() {
           description="Pedidos aparecem aqui assim que forem criados."
         />
       ) : (
-        <KanbanBoard initialOrders={clientOrders} readOnly={!canUpdateStage} />
+        <KanbanBoard
+          initialOrders={clientOrders}
+          readOnly={!canUpdateStage}
+          todayOrderCount={stats.todayOrderCount}
+          todayRevenue={stats.todayRevenue}
+          mostrarTotaisPorColuna={canViewFinancials}
+        />
       )}
     </div>
   );

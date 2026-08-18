@@ -19,6 +19,11 @@ import { toDashboardStats } from "@/types/orders";
 const ESTATISTICAS_BRUTAS = {
   monthRevenue: 48_250.75,
   monthOrderCount: 37,
+  // Valor próprio, sem dígitos em comum com o do mês: os testes de vazamento
+  // procuram cada número como substring, e um prefixo compartilhado faria um
+  // deles passar pelo motivo errado.
+  todayRevenue: 3_182.49,
+  todayOrderCount: 5,
   pendingCount: 6,
   processingCount: 11,
   readyCount: 4,
@@ -58,6 +63,17 @@ describe("getStats — faturamento por papel", () => {
     expect(stats.monthRevenue).toBeNull();
   });
 
+  // O faturamento do dia é o mesmo dado numa janela menor, e o board de
+  // Produção o exibe. Se ele escapasse da redação, esconder o cartão na
+  // Produção não impediria nada: o número já estaria no payload do RSC.
+  it.each(SEM_FATURAMENTO)("%s não recebe todayRevenue", async (role) => {
+    const { service } = montarService();
+
+    const stats = await service.getStats("company_1", role);
+
+    expect(stats.todayRevenue).toBeNull();
+  });
+
   it.each(SEM_FATURAMENTO)(
     "%s não recebe o valor nem escondido no objeto serializado",
     async (role) => {
@@ -69,6 +85,8 @@ describe("getStats — faturamento por papel", () => {
       // sobrevivesse em qualquer chave, ele apareceria aqui.
       expect(JSON.stringify(stats)).not.toContain("48250");
       expect(JSON.stringify(stats)).not.toContain("48250.75");
+      expect(JSON.stringify(stats)).not.toContain("3182");
+      expect(JSON.stringify(stats)).not.toContain("3182.49");
     },
   );
 
@@ -80,6 +98,14 @@ describe("getStats — faturamento por papel", () => {
     expect(stats.monthRevenue).toBe(ESTATISTICAS_BRUTAS.monthRevenue);
   });
 
+  it.each(COM_FATURAMENTO)("%s recebe todayRevenue", async (role) => {
+    const { service } = montarService();
+
+    const stats = await service.getStats("company_1", role);
+
+    expect(stats.todayRevenue).toBe(ESTATISTICAS_BRUTAS.todayRevenue);
+  });
+
   it.each([...SEM_FATURAMENTO, ...COM_FATURAMENTO])(
     "%s continua recebendo as contagens operacionais",
     async (role) => {
@@ -89,6 +115,9 @@ describe("getStats — faturamento por papel", () => {
 
       // Redigir o dinheiro não pode tirar do operador o painel de trabalho.
       expect(stats.monthOrderCount).toBe(ESTATISTICAS_BRUTAS.monthOrderCount);
+      // Contar pedidos do dia não é ler dinheiro: o operador precisa saber
+      // quanto entrou de trabalho hoje mesmo sem ver faturamento.
+      expect(stats.todayOrderCount).toBe(ESTATISTICAS_BRUTAS.todayOrderCount);
       expect(stats.pendingCount).toBe(ESTATISTICAS_BRUTAS.pendingCount);
       expect(stats.processingCount).toBe(ESTATISTICAS_BRUTAS.processingCount);
       expect(stats.readyCount).toBe(ESTATISTICAS_BRUTAS.readyCount);
@@ -115,6 +144,8 @@ describe("toDashboardStats — a redação em si", () => {
     // empresa que não vendeu.
     expect(redigido.monthRevenue).toBeNull();
     expect(redigido.monthRevenue).not.toBe(0);
+    expect(redigido.todayRevenue).toBeNull();
+    expect(redigido.todayRevenue).not.toBe(0);
   });
 
   it("não altera as contagens", () => {
@@ -122,5 +153,6 @@ describe("toDashboardStats — a redação em si", () => {
 
     expect(redigido.overdueCount).toBe(2);
     expect(redigido.processingCount).toBe(11);
+    expect(redigido.todayOrderCount).toBe(5);
   });
 });

@@ -1,27 +1,62 @@
 "use client";
 
-import { AlertTriangle, PackageSearch } from "lucide-react";
+import { AlertTriangle, ClipboardList, DollarSign, PackageSearch } from "lucide-react";
 
 import { StatCard } from "@/app/dashboard/_components/StatCard";
 import { calcularIndicadores } from "@/app/dashboard/production/_components/indicadores";
+import { formatCurrency } from "@/lib/formatters";
+import { cn } from "@/lib/utils";
 import type { ClientKanbanOrder } from "@/types/orders";
 
+interface ProductionMetricsProps {
+  /**
+   * Board inteiro, SEM filtro aplicado.
+   *
+   * De propósito: indicador que muda a cada tecla digitada na busca deixa de
+   * ser indicador e vira eco do campo de texto. "Em produção" e "Atrasados"
+   * respondem pelo estado real da operação, não pelo recorte que está à vista.
+   */
+  orders: ClientKanbanOrder[];
+  /** Do servidor: pedidos criados hoje na empresa toda, não só os do board. */
+  todayOrderCount: number;
+  /** `null` quando o papel não tem `reports:viewSales` — o cartão não existe. */
+  todayRevenue: number | null;
+}
+
 /**
- * Indicadores do board de Produção. O cálculo vive em `indicadores.ts` — ver
- * lá por que ele é derivado da lista e não de uma segunda consulta.
+ * Indicadores do topo da Produção, de duas origens deliberadamente diferentes.
  *
- * Faturamento do dia e pedidos de hoje NÃO entram aqui: exigem janela de tempo
- * que `getStats` ainda não expõe, e o faturamento depende de `reports:viewSales`.
- * Os dois chegam na etapa que mexe na consulta.
+ * Hoje (pedidos e faturamento) vem do servidor porque é pergunta sobre o dia
+ * da empresa, e o board não conhece o dia inteiro: ele não traz cancelados nem
+ * COMPLETED com mais de KANBAN_COMPLETED_WINDOW_DAYS dias. Em produção e
+ * Atrasados vêm da lista carregada porque são pergunta sobre o board, e
+ * derivá-los dela mantém o número coerente com o cartão durante o arrasto
+ * otimista — ver `indicadores.ts`.
+ *
+ * Nenhum dos dois acompanha o filtro. Ver a prop `orders`.
  */
-export function ProductionMetrics({ orders }: { orders: ClientKanbanOrder[] }) {
+export function ProductionMetrics({
+  orders,
+  todayOrderCount,
+  todayRevenue,
+}: ProductionMetricsProps) {
   const { emProducao, atrasados } = calcularIndicadores(orders);
 
   return (
-    // Largura limitada porque são dois cartões, não quatro: esticados na tela
-    // inteira, o número fica solto num campo vazio e o bloco perde densidade.
-    // O teto sai quando os indicadores do dia entrarem e a fila virar quatro.
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:max-w-2xl">
+    // A grade acompanha o número de cartões, como no painel: sem o faturamento,
+    // três colunas fecham a linha em vez de deixar um vão no fim dela.
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-4 sm:grid-cols-2",
+        todayRevenue !== null ? "xl:grid-cols-4" : "lg:grid-cols-3",
+      )}
+    >
+      <StatCard
+        rotulo="Pedidos hoje"
+        valor={String(todayOrderCount)}
+        icone={ClipboardList}
+        apoio="Criados desde a meia-noite"
+      />
       <StatCard
         rotulo="Em produção"
         valor={String(emProducao)}
@@ -38,6 +73,18 @@ export function ProductionMetrics({ orders }: { orders: ClientKanbanOrder[] }) {
           atrasados === 0 ? "Nenhum prazo vencido" : "Previsão de entrega já vencida"
         }
       />
+
+      {/* Ausente, e não vazio, para quem não tem `reports:viewSales`: o valor
+          nem chega ao navegador nesse caso. Ver toDashboardStats. */}
+      {todayRevenue !== null && (
+        <StatCard
+          rotulo="Faturamento do dia"
+          valor={formatCurrency(todayRevenue)}
+          icone={DollarSign}
+          apoio="Pedidos de hoje, sem os cancelados"
+          destaque
+        />
+      )}
     </div>
   );
 }
