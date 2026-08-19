@@ -6,7 +6,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PlanIntentNotice } from "@/components/common/PlanIntentNotice";
 import { env } from "@/lib/env";
-import { EXPIRED_SESSION_PARAM, EXPIRED_SESSION_VALUE } from "@/lib/constants";
+import {
+  EXPIRED_SESSION_PARAM,
+  EXPIRED_SESSION_VALUE,
+  LOGIN_ERROR_MESSAGES,
+  LOGIN_ERROR_PARAM,
+  type LoginErrorCode,
+} from "@/lib/constants";
 import { buildRegisterUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { LoginForm } from "@/app/(auth)/login/_components/LoginForm";
 import { GoogleSignInButton } from "@/app/(auth)/login/_components/GoogleSignInButton";
@@ -21,6 +27,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const googleEnabled = Boolean(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET);
   const sessionExpired = params[EXPIRED_SESSION_PARAM] === EXPIRED_SESSION_VALUE;
+
+  // Falha de login de quem enviou o formulário sem JavaScript: ali não há
+  // toast, e a mensagem precisa vir renderizada. O código é conferido contra
+  // a tabela — o que não casar não exibe nada, então a query não consegue
+  // escrever texto dentro do cartão.
+  const codigoDeErro = params[LOGIN_ERROR_PARAM];
+  const erroDeLogin =
+    typeof codigoDeErro === "string"
+      ? LOGIN_ERROR_MESSAGES[codigoDeErro as LoginErrorCode]
+      : undefined;
 
   // Revalidada, como em /register: a página anterior não é fonte confiável.
   const intent = parsePlanIntent({ plan: params.plan, billing: params.billing });
@@ -61,6 +77,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             >
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>Sua sessão não é mais válida. Entre novamente para continuar.</span>
+            </div>
+          )}
+
+          {erroDeLogin && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>{erroDeLogin}</span>
             </div>
           )}
 

@@ -131,6 +131,35 @@ export const EXPIRED_SESSION_PARAM = "session";
 export const EXPIRED_SESSION_VALUE = "expired";
 export const EXPIRED_SESSION_LOGIN_URL = `${ROUTES.LOGIN}?${EXPIRED_SESSION_PARAM}=${EXPIRED_SESSION_VALUE}`;
 
+/**
+ * Falha de login devolvida SEM JavaScript, pela URL.
+ *
+ * Sem hidratação não há toast: o formulário faz um POST de verdade para a
+ * Server Action, que redireciona de volta ao login. A mensagem precisa então
+ * atravessar uma URL — e por isso o que viaja é um CÓDIGO de um conjunto
+ * fechado, nunca o texto. Texto vindo da query seria refletido na página, e
+ * `?erro=` viraria um canal para escrever qualquer coisa dentro do cartão de
+ * login. O navegador escolhe entre estas três; quem não casar não exibe nada.
+ *
+ * As credenciais NUNCA entram aqui. Ver LoginForm: o form declara `action`, o
+ * que faz o React emitir method=POST, e os campos viajam no corpo.
+ */
+export const LOGIN_ERROR_PARAM = "erro";
+
+export const LOGIN_ERRORS = {
+  CREDENCIAIS: "credenciais",
+  LIMITE: "limite",
+  INVALIDO: "invalido",
+} as const;
+
+export type LoginErrorCode = (typeof LOGIN_ERRORS)[keyof typeof LOGIN_ERRORS];
+
+export const LOGIN_ERROR_MESSAGES: Record<LoginErrorCode, string> = {
+  [LOGIN_ERRORS.CREDENCIAIS]: "E-mail ou senha incorretos",
+  [LOGIN_ERRORS.LIMITE]: "Muitas tentativas. Tente novamente em 15 minutos.",
+  [LOGIN_ERRORS.INVALIDO]: "E-mail ou senha inválidos",
+};
+
 // "Atrasado" não está aqui porque não é um valor de OrderPaymentStatus — é
 // condição derivada por isOrderOverdue(). A tela combina o rótulo abaixo com
 // o aviso de atraso; o banco guarda só o primeiro.

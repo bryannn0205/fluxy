@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/form";
 import { loginSchema, type LoginInput } from "@/schemas/auth.schema";
 import type { PlanIntent } from "@/lib/plan-intent";
-import { loginAction } from "@/app/(auth)/login/actions";
+import { loginAction, loginFormAction } from "@/app/(auth)/login/actions";
 
 interface LoginFormProps {
   /** Validada no servidor pela página; revalidada de novo pela action. */
@@ -64,7 +64,33 @@ export function LoginForm({ intent }: LoginFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      {/* `action` não é redundante com o `onSubmit`: é o que torna o HTML
+          servido seguro por conta própria.
+
+          Um <form> sem `action` submete para a própria URL, e sem `method` o
+          padrão do HTML é GET. Enquanto o React não hidratou, o `onSubmit`
+          ainda não existe — então um clique em Entrar antes disso mandava
+          e-mail e senha para a barra de endereços e para o histórico. Passar
+          uma Server Action aqui faz o React emitir `method="POST"` já no
+          HTML inicial, e os campos passam a viajar no corpo da requisição.
+
+          Com o JavaScript ativo, `handleSubmit` chama preventDefault e o
+          envio segue pelo caminho de sempre, com validação no cliente e
+          toast de erro. Sem ele, o POST vai direto para a action e o login
+          acontece mesmo assim. */}
+      <form
+        action={loginFormAction}
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-5"
+      >
+        {/* A intenção de plano acompanha o envio sem JavaScript, que não tem
+            como ler a prop. É revalidada no servidor de qualquer forma. */}
+        {intent && (
+          <>
+            <input type="hidden" name="plan" value={intent.plan} />
+            <input type="hidden" name="billing" value={intent.billing} />
+          </>
+        )}
         <FormField
           control={form.control}
           name="email"

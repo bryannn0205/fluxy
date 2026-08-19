@@ -1,10 +1,17 @@
 "use server";
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { signIn } from "@/lib/auth";
+import {
+  LOGIN_ERRORS,
+  LOGIN_ERROR_MESSAGES,
+  LOGIN_ERROR_PARAM,
+  type LoginErrorCode,
+} from "@/lib/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { buildPostAuthUrl, parsePlanIntent } from "@/lib/plan-intent";
+import { buildLoginUrl, buildPostAuthUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { loginSchema } from "@/schemas/auth.schema";
 import type { ActionResult } from "@/types/common";
 
@@ -20,7 +27,7 @@ export async function loginAction(
   const validation = loginSchema.safeParse(input);
   if (!validation.success) {
     return {
-      error: "E-mail ou senha inválidos",
+      error: LOGIN_ERROR_MESSAGES[LOGIN_ERRORS.INVALIDO],
       fields: validation.error.flatten().fieldErrors,
     };
   }
@@ -33,7 +40,7 @@ export async function loginAction(
   });
 
   if (!allowed) {
-    return { error: "Muitas tentativas. Tente novamente em 15 minutos." };
+    return { error: LOGIN_ERROR_MESSAGES[LOGIN_ERRORS.LIMITE] };
   }
 
   // Revalidada no servidor; o destino sai de um conjunto fechado no código.
@@ -48,7 +55,7 @@ export async function loginAction(
     });
   } catch (error) {
     if (error instanceof Error && error.name === "CredentialsSignin") {
-      return { error: "E-mail ou senha incorretos" };
+      return { error: LOGIN_ERROR_MESSAGES[LOGIN_ERRORS.CREDENCIAIS] };
     }
     // NEXT_REDIRECT é lançado pelo signIn em caso de sucesso — precisa
     // propagar, não é uma falha real.
@@ -56,4 +63,49 @@ export async function loginAction(
   }
 
   return {};
+}
+
+/** Descobre o código a partir da mensagem, sem manter uma segunda tabela. */
+function codigoDoErro(mensagem: string | undefined): LoginErrorCode {
+  const par = Object.entries(LOGIN_ERROR_MESSAGES).find(
+    ([, texto]) => texto === mensagem,
+  );
+  return (par?.[0] as LoginErrorCode) ?? LOGIN_ERRORS.INVALIDO;
+}
+
+/**
+ * O caminho do formulário sem JavaScript.
+ *
+ * Existe para o HTML servido ser seguro sozinho. Um `<form>` sem `action`
+ * submete para a própria URL, e sem `method` o padrão do HTML é GET — então,
+ * enquanto o React ainda não hidratou, um clique em Entrar mandava e-mail e
+ * senha para a barra de endereços, o histórico e qualquer log de acesso pelo
+ * caminho. Declarar esta Server Action como `action` do form faz o React
+ * emitir `method="POST"` no HTML inicial: o navegador passa a enviar os
+ * campos no CORPO da requisição, hidratado ou não.
+ *
+ * Não é só uma trava: sem JavaScript o login acontece de verdade. O erro
+ * volta como código de um conjunto fechado, porque aqui não há toast — e
+ * porque devolver texto pela URL deixaria a página refletir o que viesse
+ * escrito nela.
+ */
+export async function loginFormAction(formData: FormData): Promise<void> {
+  const intentInput = {
+    plan: formData.get("plan") ?? undefined,
+    billing: formData.get("billing") ?? undefined,
+  };
+
+  const resultado = await loginAction(
+    {
+      email: formData.get("email"),
+      password: formData.get("password"),
+    },
+    intentInput,
+  );
+
+  // Só se chega aqui em caso de erro: no sucesso, o `signIn` de `loginAction`
+  // lança NEXT_REDIRECT e a navegação acontece antes desta linha.
+  const destino = buildLoginUrl(parsePlanIntent(intentInput));
+  const separador = destino.includes("?") ? "&" : "?";
+  redirect(`${destino}${separador}${LOGIN_ERROR_PARAM}=${codigoDoErro(resultado.error)}`);
 }
