@@ -1,5 +1,10 @@
 "use server";
 
+import { redirect } from "next/navigation";
+
+import { FORGOT_PASSWORD_SENT_PARAM, FORGOT_PASSWORD_SENT_VALUE } from "@/lib/constants";
+import { ROUTES } from "@/lib/constants";
+
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { handleAction } from "@/lib/action-handler";
@@ -56,4 +61,23 @@ export async function forgotPasswordAction(input: unknown): Promise<ActionResult
 
     return null;
   });
+}
+
+/**
+ * O caminho do formulário sem JavaScript — ver a action equivalente do login.
+ *
+ * Sem `action` o <form> submeteria em GET para a própria URL, levando o
+ * e-mail digitado para a barra de endereços e para o histórico enquanto o
+ * React ainda não hidratou. Com a Server Action declarada, o React emite
+ * method="POST" no HTML servido e o campo viaja no corpo.
+ *
+ * O destino é o mesmo dando certo ou errado, de propósito: é a resposta
+ * única que impede a tela de revelar quem tem conta.
+ */
+export async function forgotPasswordFormAction(formData: FormData): Promise<void> {
+  await forgotPasswordAction({ email: formData.get("email") });
+
+  redirect(
+    `${ROUTES.FORGOT_PASSWORD}?${FORGOT_PASSWORD_SENT_PARAM}=${FORGOT_PASSWORD_SENT_VALUE}`,
+  );
 }

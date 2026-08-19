@@ -160,6 +160,30 @@ export const LOGIN_ERROR_MESSAGES: Record<LoginErrorCode, string> = {
   [LOGIN_ERRORS.INVALIDO]: "E-mail ou senha inválidos",
 };
 
+/**
+ * Falha de cadastro devolvida SEM JavaScript, pela mesma razão do login.
+ *
+ * A mensagem é uma só, deliberadamente genérica. `registerAction` distingue
+ * e-mail já cadastrado de dado inválido, e distinguir isso numa resposta
+ * pública transformaria o cadastro em oráculo de enumeração — qualquer um
+ * descobriria quem tem conta testando endereços. É a mesma escolha já feita
+ * em /forgot-password.
+ */
+export const REGISTER_ERROR_PARAM = "erro";
+export const REGISTER_ERROR_VALUE = "falha";
+export const REGISTER_ERROR_MESSAGE =
+  "Não foi possível concluir o cadastro. Confira os dados e tente novamente.";
+
+/**
+ * Recuperação de senha enviada SEM JavaScript.
+ *
+ * O valor é um marcador, não um recado: a resposta é a MESMA existindo ou
+ * não a conta, que é o que impede o formulário de virar oráculo de
+ * enumeração. Ver tests/unit/app/forgot-password-action.test.ts.
+ */
+export const FORGOT_PASSWORD_SENT_PARAM = "enviado";
+export const FORGOT_PASSWORD_SENT_VALUE = "1";
+
 // "Atrasado" não está aqui porque não é um valor de OrderPaymentStatus — é
 // condição derivada por isOrderOverdue(). A tela combina o rótulo abaixo com
 // o aviso de atraso; o banco guarda só o primeiro.

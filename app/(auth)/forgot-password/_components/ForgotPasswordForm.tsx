@@ -17,7 +17,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { forgotPasswordSchema, type ForgotPasswordInput } from "@/schemas/auth.schema";
-import { forgotPasswordAction } from "@/app/(auth)/forgot-password/actions";
+import {
+  forgotPasswordAction,
+  forgotPasswordFormAction,
+} from "@/app/(auth)/forgot-password/actions";
 
 export function ForgotPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +57,13 @@ export function ForgotPasswordForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      {/* `action` deixa o HTML seguro sozinho: sem ela o envio antes da
+          hidratação seria um GET com o e-mail na query. Ver LoginForm. */}
+      <form
+        action={forgotPasswordFormAction}
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-4"
+      >
         <FormField
           control={form.control}
           name="email"

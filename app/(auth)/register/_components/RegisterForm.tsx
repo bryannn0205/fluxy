@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { registerSchema, type RegisterInput } from "@/schemas/auth.schema";
 import type { PlanIntent } from "@/lib/plan-intent";
-import { registerAction } from "@/app/(auth)/register/actions";
+import { registerAction, registerFormAction } from "@/app/(auth)/register/actions";
 
 interface RegisterFormProps {
   /** Validada no servidor pela página; revalidada de novo pela action. */
@@ -67,7 +67,20 @@ export function RegisterForm({ intent }: RegisterFormProps) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      {/* `action` torna o HTML servido seguro sozinho: sem ela o form
+          submeteria em GET para a própria URL e levaria a senha na query
+          enquanto o React ainda não hidratou. Ver LoginForm. */}
+      <form
+        action={registerFormAction}
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-4"
+      >
+        {intent && (
+          <>
+            <input type="hidden" name="plan" value={intent.plan} />
+            <input type="hidden" name="billing" value={intent.billing} />
+          </>
+        )}
         <FormField
           control={form.control}
           name="companyName"

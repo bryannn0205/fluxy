@@ -3,7 +3,12 @@ import type { Metadata } from "next";
 
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { PlanIntentNotice } from "@/components/common/PlanIntentNotice";
-import { TRIAL_DURATION_DAYS } from "@/lib/constants";
+import {
+  REGISTER_ERROR_MESSAGE,
+  REGISTER_ERROR_PARAM,
+  REGISTER_ERROR_VALUE,
+  TRIAL_DURATION_DAYS,
+} from "@/lib/constants";
 import { buildLoginUrl, parsePlanIntent } from "@/lib/plan-intent";
 import { RegisterForm } from "@/app/(auth)/register/_components/RegisterForm";
 
@@ -15,6 +20,10 @@ interface RegisterPageProps {
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
   const params = await searchParams;
+
+  // Falha de cadastro de quem enviou sem JavaScript: ali não há toast. Só o
+  // valor previsto exibe algo, então a query não escreve texto na página.
+  const falhouOCadastro = params[REGISTER_ERROR_PARAM] === REGISTER_ERROR_VALUE;
 
   // Revalidada aqui, mesmo tendo passado por /plans. A página anterior não é
   // uma fonte confiável: entre uma e outra está a barra de endereços. Qualquer
@@ -36,6 +45,15 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
       </CardHeader>
       <CardContent className="space-y-4">
         <PlanIntentNotice intent={intent} />
+
+        {falhouOCadastro && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {REGISTER_ERROR_MESSAGE}
+          </div>
+        )}
 
         <RegisterForm intent={intent} />
 
