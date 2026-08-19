@@ -91,6 +91,27 @@ export function KanbanBoard({
   const [orders, setOrders] = useState(initialOrders);
   const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<FiltrosDeProducao>(FILTROS_LIMPOS);
+
+  // Onde o dnd-kit monta a região de anúncios do arrasto.
+  //
+  // Por padrão ela nasce aqui dentro, sob o `.dashboard` — e isso quebrava o
+  // isolamento de fundo de todo painel aberto NESTA tela. O Base UI esconde
+  // o resto da página do leitor de tela quando um Dialog abre, mas preserva
+  // de propósito quem tem `aria-live` e a cadeia de ancestrais até ele, para
+  // os anúncios continuarem audíveis. Com a região dentro do board, o
+  // ancestral preservado passava a ser o `.dashboard` inteiro: o drawer
+  // abria e o conteúdo de trás seguia legível por leitor de tela. Em
+  // /dashboard/orders, sem dnd-kit, o mesmo drawer isolava corretamente.
+  //
+  // Montando no <body>, a região vira irmã do painel: continua anunciando o
+  // arrasto e deixa de arrastar o board consigo para fora do isolamento.
+  // Definida em efeito porque `document` não existe na renderização do
+  // servidor.
+  const [containerDeAnuncios, setContainerDeAnuncios] = useState<Element | null>(null);
+
+  useEffect(() => {
+    setContainerDeAnuncios(document.body);
+  }, []);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
@@ -201,7 +222,11 @@ export function KanbanBoard({
       // aqui faz o dnd-kit usá-lo diretamente, sem contador.
       id="production-kanban"
       collisionDetection={closestCorners}
-      accessibility={{ announcements, screenReaderInstructions }}
+      accessibility={{
+        announcements,
+        screenReaderInstructions,
+        ...(containerDeAnuncios ? { container: containerDeAnuncios } : {}),
+      }}
       // Sem sensor nenhum, nenhum arrasto chega a começar — nem por mouse nem
       // por teclado. O DndContext continua montado porque os cards usam seus
       // hooks; removê-lo quebraria a renderização em vez de só travar a ação.
