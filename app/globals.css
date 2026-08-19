@@ -269,7 +269,33 @@
    Contrastes conferidos contra WCAG 2.1 AA: branco sobre o roxo do botão em
    5,7:1; texto secundário em 7,5:1 sobre as superfícies.
    ───────────────────────────────────────────────────────────────────────── */
-.dashboard {
+/* O segundo seletor é o que faz o tema alcançar os overlays.
+
+   Sheet, Dialog, DropdownMenu e Select montam seu conteúdo por portal, direto
+   em <body> — é para isso que o portal existe, escapar da subárvore para não
+   ficar preso a overflow, transform e stacking context de quem o abriu. Só que
+   o tema do painel vive numa subárvore: a classe abaixo está num <div> dentro
+   do <body>. O portal cai FORA dele, não encontra nenhum ancestral com estes
+   tokens e resolve --popover, --border e --foreground no :root — que é claro.
+   Resultado: painel branco com texto quase preto sobre o board escuro.
+
+   `body:has(.dashboard)` sobe os mesmos tokens um nível, até o <body>. Como
+   todo portal é filho do <body>, ele passa a herdar o tema do painel sem que
+   nenhum componente precise saber que está no painel. É troca de valor de
+   custom property e nada mais: nenhum nó de DOM muda de lugar, nenhum atributo
+   é reescrito. Foco, Escape, aria e ordem de empilhamento seguem exatamente o
+   que o Base UI já fazia — medidos antes e depois, idênticos.
+
+   O :has() é o que mantém o escopo: só casa em página cujo conteúdo tem a
+   classe abaixo, isto é, apenas sob o layout do dashboard. Landing, login,
+   registro e demais páginas públicas não têm essa classe, seguem no :root e
+   nada nelas muda. Em navegador sem :has() a regra é ignorada e volta-se ao
+   comportamento anterior — degrada, não quebra.
+
+   O bloco de FUNDO do painel (logo abaixo) continua apenas na classe: repetir
+   os gradientes no <body> os pintaria duas vezes. */
+.dashboard,
+body:has(.dashboard) {
   --background: #0a0912;
   --foreground: #f6f5fa;
   --card: #131120;
