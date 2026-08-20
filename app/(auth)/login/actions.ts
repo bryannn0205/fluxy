@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { signIn } from "@/lib/auth";
+import { CredentialsSignin, signIn } from "@/lib/auth";
 import {
   LOGIN_ERRORS,
   LOGIN_ERROR_MESSAGES,
@@ -54,7 +54,20 @@ export async function loginAction(
       redirectTo: buildPostAuthUrl(intent),
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "CredentialsSignin") {
+    // `instanceof`, e NÃO `error.name`.
+    //
+    // O Auth.js monta o erro com `this.name = this.constructor.name` — o nome
+    // do identificador da classe, que o minificador do build de produção
+    // reescreve para uma letra. Comparar com a string "CredentialsSignin"
+    // passava em desenvolvimento, onde não há minificação, e falhava
+    // exatamente em produção: o erro escapava para o `throw` abaixo e o
+    // usuário que errava a senha recebia 500 em vez da mensagem.
+    //
+    // A classe vem de `@/lib/auth`, que a reexporta do mesmo `next-auth` de
+    // onde sai o `signIn` acima, e há uma única cópia de @auth/core na árvore
+    // — então o `instanceof` não corre risco de comparar contra outra
+    // realização da mesma classe.
+    if (error instanceof CredentialsSignin) {
       return { error: LOGIN_ERROR_MESSAGES[LOGIN_ERRORS.CREDENCIAIS] };
     }
     // NEXT_REDIRECT é lançado pelo signIn em caso de sucesso — precisa

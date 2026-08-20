@@ -25,6 +25,13 @@ const googleProvider =
       ]
     : [];
 
+/**
+ * Reexportada aqui porque este módulo é o ponto único de contato do projeto
+ * com o Auth.js — quem trata o erro do `signIn` acima precisa da classe para
+ * reconhecê-lo por `instanceof`, e não por nome (que a minificação reescreve).
+ */
+export { CredentialsSignin } from "next-auth";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),

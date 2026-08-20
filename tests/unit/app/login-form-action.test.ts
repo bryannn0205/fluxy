@@ -1,3 +1,9 @@
+// De `@auth/core/errors`, e não de `next-auth`: importar o pacote inteiro
+// puxa o runtime do Next para dentro do teste. É a MESMA classe — o
+// next-auth apenas reexporta (`export { CredentialsSignin } from
+// "@auth/core/errors"`) e há uma única cópia de @auth/core na árvore, então
+// o `instanceof` do código de produção reconhece esta instância.
+import { CredentialsSignin } from "@auth/core/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LOGIN_ERRORS, LOGIN_ERROR_MESSAGES, LOGIN_ERROR_PARAM } from "@/lib/constants";
@@ -29,7 +35,13 @@ const redirect = vi.fn((destino: string) => {
 });
 const checkRateLimit = vi.fn().mockResolvedValue({ allowed: true, remaining: 5 });
 
-vi.mock("@/lib/auth", () => ({ signIn: (...args: unknown[]) => signIn(...args) }));
+// O mock devolve a classe REAL de erro: só o `signIn` é substituído. Se
+// devolvesse um dublê, o `instanceof` do código passaria por construção e o
+// teste não provaria nada.
+vi.mock("@/lib/auth", () => ({
+  signIn: (...args: unknown[]) => signIn(...args),
+  CredentialsSignin,
+}));
 vi.mock("next/navigation", () => ({ redirect: (d: string) => redirect(d) }));
 vi.mock("next/headers", () => ({
   headers: () => Promise.resolve(new Map([["x-forwarded-for", "203.0.113.7"]])),
@@ -61,9 +73,7 @@ afterEach(() => {
 
 describe("loginFormAction — credenciais nunca chegam à URL", () => {
   it("não devolve a senha na URL quando o login falha", async () => {
-    signIn.mockRejectedValueOnce(
-      Object.assign(new Error("falhou"), { name: "CredentialsSignin" }),
-    );
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
     const destino = await enviar({ email: EMAIL, password: SENHA });
 
@@ -73,9 +83,7 @@ describe("loginFormAction — credenciais nunca chegam à URL", () => {
   });
 
   it("não devolve o e-mail na URL quando o login falha", async () => {
-    signIn.mockRejectedValueOnce(
-      Object.assign(new Error("falhou"), { name: "CredentialsSignin" }),
-    );
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
     const destino = await enviar({ email: EMAIL, password: SENHA });
 
@@ -101,9 +109,7 @@ describe("loginFormAction — credenciais nunca chegam à URL", () => {
   });
 
   it("nenhum valor do formulário sobrevive na query, seja qual for o campo", async () => {
-    signIn.mockRejectedValueOnce(
-      Object.assign(new Error("falhou"), { name: "CredentialsSignin" }),
-    );
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
     const destino = await enviar({
       email: EMAIL,
@@ -125,21 +131,16 @@ describe("loginFormAction — credenciais nunca chegam à URL", () => {
 });
 
 describe("loginFormAction — o código de erro vem de um conjunto fechado", () => {
-  it.each([["CredentialsSignin", LOGIN_ERRORS.CREDENCIAIS]])(
-    "mapeia %s para o código %s",
-    async (nomeDoErro, codigo) => {
-      signIn.mockRejectedValueOnce(Object.assign(new Error("x"), { name: nomeDoErro }));
+  it("mapeia a falha de credencial para o código previsto", async () => {
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
-      const destino = await enviar({ email: EMAIL, password: SENHA });
+    const destino = await enviar({ email: EMAIL, password: SENHA });
 
-      expect(destino).toContain(`${LOGIN_ERROR_PARAM}=${codigo}`);
-    },
-  );
+    expect(destino).toContain(`${LOGIN_ERROR_PARAM}=${LOGIN_ERRORS.CREDENCIAIS}`);
+  });
 
   it("o código na URL é sempre um dos previstos", async () => {
-    signIn.mockRejectedValueOnce(
-      Object.assign(new Error("falhou"), { name: "CredentialsSignin" }),
-    );
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
     const destino = await enviar({ email: EMAIL, password: SENHA });
     const codigo = new URL(destino!, "http://localhost").searchParams.get(
@@ -157,9 +158,7 @@ describe("loginFormAction — o código de erro vem de um conjunto fechado", () 
   });
 
   it("preserva a intenção de plano ao voltar", async () => {
-    signIn.mockRejectedValueOnce(
-      Object.assign(new Error("falhou"), { name: "CredentialsSignin" }),
-    );
+    signIn.mockRejectedValueOnce(new CredentialsSignin());
 
     const destino = await enviar({
       email: EMAIL,
